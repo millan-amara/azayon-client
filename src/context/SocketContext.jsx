@@ -4,6 +4,10 @@ import { useAuth } from './AuthContext';
 
 const SocketContext = createContext(null);
 
+const SOCKET_URL = import.meta.env.VITE_API_URL
+  ? import.meta.env.VITE_API_URL.replace('/api', '')
+  : '/';
+
 export function SocketProvider({ children }) {
   const { user, org } = useAuth();
   const socketRef = useRef(null);
@@ -12,7 +16,7 @@ export function SocketProvider({ children }) {
   useEffect(() => {
     if (!user || !org) return;
 
-    socketRef.current = io('/', { withCredentials: true });
+    socketRef.current = io(SOCKET_URL, { withCredentials: true });
 
     socketRef.current.on('connect', () => {
       setConnected(true);
