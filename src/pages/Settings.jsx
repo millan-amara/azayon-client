@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Copy, Check, Plus, Eye, EyeOff, MoreVertical, Pencil, Trash2, Clock, X, CreditCard, CheckCircle2, Zap, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useTeam, useInviteUser, useUpdateUser, useRemoveUser, useReactivateUser, usePendingInvites, useCancelInvite } from '@/hooks/useData';
@@ -514,7 +514,7 @@ function BillingTab() {
 export default function Settings() {
   const { user, org, updateUser } = useAuth();
   const { data: teamData } = useTeam();
-  const { billing } = usePlan();
+  const { billing, refetch } = usePlan();
   const [showInvite, setShowInvite] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: user?.name || '', phone: user?.phone || '' });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
@@ -526,17 +526,17 @@ export default function Settings() {
     ? 'billing' : 'general';
   const [activeTab, setActiveTab] = useState(defaultTab);
 
-  // Show success toast if returning from Paystack payment
-  useState(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('payment') === 'success') {
-        toast.success('Payment successful — welcome to Growth! 🎉');
-        // Clean up URL
-        window.history.replaceState({}, '', '/settings?tab=billing');
-      }
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'success') {
+      toast.success('Payment successful — welcome to Growth! 🎉');
+      window.history.replaceState({}, '', '/settings?tab=billing');
+      // Bust the billing cache so PlanContext fetches fresh data
+      sessionStorage.removeItem('billingStatus');
+      sessionStorage.removeItem('billingStatusAt');
+      refetch();
     }
-  });
+  }, []);
 
   const saveProfile = async (e) => {
     e.preventDefault();

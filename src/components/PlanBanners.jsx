@@ -42,7 +42,7 @@ export function TrialBanner() {
             'h-7 text-xs font-semibold border-white/40',
             isUrgent
               ? 'text-white hover:bg-red-400 hover:text-white'
-              : 'text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground'
+              : 'text-primary hover:bg-primary-foreground/10 hover:text-primary-foreground'
           )}
         >
           Upgrade now

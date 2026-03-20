@@ -342,10 +342,10 @@ export default function Contacts() {
 
   return (
     <div className="space-y-4 max-w-6xl">
-      {billing && billing.limits?.maxContacts !== Infinity && (
+      {billing && !billing.hasFullAccess && billing.limits?.maxContacts < 999999 && pagination?.total > 0 && (
         <UsageWarningBanner
           type="contacts"
-          current={pagination?.total || 0}
+          current={pagination.total}
           limit={billing.limits.maxContacts}
         />
       )}

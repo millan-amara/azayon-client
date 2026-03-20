@@ -376,11 +376,13 @@ export function useReactivateUser() {
   });
 }
 
-export function usePendingInvites() {
+export function usePendingInvites(isAdmin = true) {
   return useQuery({
     queryKey: ['pending-invites'],
     queryFn: () => api.get('/users/invites/pending').then((r) => r.data),
+    enabled: isAdmin,
     ...STALE_5MIN,
+    retry: false,
   });
 }
 
