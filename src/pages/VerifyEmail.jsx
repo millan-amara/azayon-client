@@ -39,7 +39,7 @@ export default function VerifyEmail() {
           <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
             <Building2 className="w-5 h-5 text-white" />
           </div>
-          <span className="text-xl font-bold">{import.meta.env.VITE_APP_NAME || 'YourCRM'}</span>
+          <span className="text-xl font-bold">{import.meta.env.VITE_APP_NAME || 'Azayon'}</span>
         </div>
 
         <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">

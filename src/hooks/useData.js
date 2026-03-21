@@ -91,10 +91,12 @@ export function useDeals(params = {}) {
   });
 }
 
-export function useKanban(pipelineId) {
+export function useKanban(pipelineId, assignedTo = '') {
   return useQuery({
-    queryKey: ['kanban', pipelineId],
-    queryFn: () => api.get(`/deals/kanban/${pipelineId}`).then((r) => r.data),
+    queryKey: ['kanban', pipelineId, assignedTo],
+    queryFn: () => api.get(`/deals/kanban/${pipelineId}`, {
+      params: assignedTo ? { assignedTo } : {},
+    }).then((r) => r.data),
     enabled: !!pipelineId,
     ...STALE_1MIN,
   });

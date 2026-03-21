@@ -4,7 +4,7 @@ import {
   ArrowLeft, MessageCircle, ExternalLink, Sparkles,
   RefreshCw, X, Paperclip, Trophy, XCircle, Edit2,
 } from 'lucide-react';
-import { useDeal, useMarkDealWon, useMarkDealLost, useUpdateDeal } from '@/hooks/useData';
+import { useDeal, useMarkDealWon, useMarkDealLost, useUpdateDeal, useTeam } from '@/hooks/useData';
 import { useRole } from '@/hooks/useRole';
 import { Button, Card, Modal, Input, Select, Textarea, Spinner } from '@/components/ui';
 import { Attachments } from '@/components/Attachments';
@@ -96,19 +96,26 @@ Give a sharp 3-4 sentence deal assessment: health of the deal, biggest risk, and
 
 function EditDealModal({ open, onClose, deal }) {
   const { mutateAsync, isPending } = useUpdateDeal();
+  const { data: teamData } = useTeam();
   const [form, setForm] = useState({
     title: deal.title || '',
     value: deal.value || '',
     expectedCloseDate: deal.expectedCloseDate ? formatDate(deal.expectedCloseDate, 'yyyy-MM-dd') : '',
     notes: deal.notes || '',
+    assignedTo: deal.assignedTo?._id || '',
   });
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await mutateAsync({ id: deal._id, ...form, value: parseFloat(form.value) || 0 });
+    const updates = { ...form, value: parseFloat(form.value) || 0 };
+    if (!updates.assignedTo) delete updates.assignedTo;
+    await mutateAsync({ id: deal._id, ...updates });
     onClose();
+    toast.success('Deal updated');
   };
+
+  const teamMembers = (teamData?.users || []).filter((u) => u.isActive !== false);
 
   return (
     <Modal open={open} onClose={onClose} title="Edit deal">
@@ -116,6 +123,18 @@ function EditDealModal({ open, onClose, deal }) {
         <Input label="Deal title" value={form.title} onChange={set('title')} required />
         <Input label="Value (KES)" type="number" value={form.value} onChange={set('value')} />
         <Input label="Expected close date" type="date" value={form.expectedCloseDate} onChange={set('expectedCloseDate')} />
+        <Select
+          label="Assigned to"
+          value={form.assignedTo}
+          onChange={set('assignedTo')}
+          options={[
+            { value: '', label: 'Unassigned' },
+            ...teamMembers.map((u) => ({
+              value: u._id,
+              label: u.role === 'viewer' ? `${u.name} (viewer)` : u.name,
+            })),
+          ]}
+        />
         <Textarea label="Notes" value={form.notes} onChange={set('notes')} rows={3} />
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>

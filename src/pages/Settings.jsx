@@ -161,14 +161,20 @@ function TeamTab({ user, teamData, onInvite }) {
   const { mutate: removeUser } = useRemoveUser();
   const { mutate: reactivateUser } = useReactivateUser();
   const { mutate: cancelInvite } = useCancelInvite();
-  const { data: inviteData } = usePendingInvites();
+  const { data: inviteData } = usePendingInvites(user?.role === 'admin');
   const [editingMember, setEditingMember] = useState(null);
   const [menuOpen, setMenuOpen] = useState(null);
+  const [deactivatingMember, setDeactivatingMember] = useState(null);
 
   const handleRemove = (member) => {
-    if (!confirm(`Deactivate ${member.name}? They will lose access immediately but their data will be kept.`)) return;
-    removeUser(member._id);
+    setDeactivatingMember(member);
     setMenuOpen(null);
+  };
+
+  const confirmDeactivate = () => {
+    if (!deactivatingMember) return;
+    removeUser(deactivatingMember._id);
+    setDeactivatingMember(null);
   };
 
   const handleReactivate = (member) => {
@@ -280,6 +286,60 @@ function TeamTab({ user, teamData, onInvite }) {
         onClose={() => setEditingMember(null)}
         member={editingMember}
       />
+
+      <Modal
+        open={!!deactivatingMember}
+        onClose={() => setDeactivatingMember(null)}
+        title="Deactivate team member"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-100 rounded-lg">
+            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+              <span className="text-red-600 text-sm font-bold">!</span>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-red-800">
+                Deactivate {deactivatingMember?.name}?
+              </p>
+              <p className="text-xs text-red-600 mt-0.5">
+                They will lose access immediately. All their data, contacts, and deals will be kept.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setDeactivatingMember(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white border-0"
+              onClick={confirmDeactivate}
+            >
+              Yes, deactivate
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* <Modal
+  open={!!deactivatingMember}
+  onClose={() => setDeactivatingMember(null)}
+  title="Deactivate team member"
+>
+  <div className="space-y-4">
+    <p className="text-sm text-muted-foreground">
+      Are you sure you want to deactivate <strong>{deactivatingMember?.name}</strong>?
+      They will lose access immediately but all their data will be kept.
+    </p>
+    <div className="flex gap-3">
+      <Button variant="outline" className="flex-1" onClick={() => setDeactivatingMember(null)}>
+        Cancel
+      </Button>
+      <Button variant="destructive" className="flex-1" onClick={confirmDeactivate}>
+        Deactivate
+      </Button>
+    </div>
+  </div>
+</Modal> */}
     </Card>
   );
 }
@@ -362,6 +422,7 @@ function BillingTab() {
   const { billing, refetch } = usePlan();
   const { showUpgrade } = useUpgrade();
   const [cancelling, setCancelling] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
 
   if (!billing) return <div className="flex justify-center py-8"><div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
 
@@ -371,7 +432,6 @@ function BillingTab() {
   const isCancelled = status === 'cancelled';
 
   const handleCancel = async () => {
-    if (!confirm('Are you sure you want to cancel? You will keep access until the end of your billing period.')) return;
     setCancelling(true);
     try {
       await api.post('/billing/cancel');
@@ -381,6 +441,7 @@ function BillingTab() {
       toast.error('Failed to cancel — please contact support');
     } finally {
       setCancelling(false);
+      setShowCancelModal(false);
     }
   };
 
@@ -453,7 +514,7 @@ function BillingTab() {
               </Button>
             )}
             {isActive && !isCancelled && (
-              <Button variant="outline" size="sm" loading={cancelling} onClick={handleCancel}>
+              <Button variant="outline" size="sm" onClick={() => setShowCancelModal(true)}>
                 Cancel subscription
               </Button>
             )}
@@ -507,6 +568,27 @@ function BillingTab() {
       <p className="text-xs text-muted-foreground text-center">
         Payments via Paystack · M-Pesa, cards and bank transfer accepted · Cancel anytime
       </p>
+
+      {/* Cancel subscription modal */}
+      <Modal open={showCancelModal} onClose={() => setShowCancelModal(false)} title="Cancel subscription">
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to cancel? You'll keep full Growth access until the end of your current billing period. After that, your account moves to the Free plan — your data stays safe.
+          </p>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setShowCancelModal(false)}>
+              Keep subscription
+            </Button>
+            <Button
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white border-0"
+              loading={cancelling}
+              onClick={handleCancel}
+            >
+              Yes, cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -569,9 +651,9 @@ export default function Settings() {
 
   const tabs = [
     { id: 'general', label: 'General' },
-    { id: 'billing', label: 'Billing' },
+    ...(user?.role === 'admin' ? [{ id: 'billing', label: 'Billing' }] : []),
     { id: 'api', label: 'API & n8n' },
-    { id: 'team', label: 'Team' },
+    ...(user?.role === 'admin' ? [{ id: 'team', label: 'Team' }] : []),
     { id: 'profile', label: 'Profile' },
   ];
 

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { Plus, MessageCircle, MoreVertical, Trophy, XCircle } from 'lucide-react';
-import { useKanban, usePipelines, useUpdateDeal, useCreateDeal, useMarkDealWon, useMarkDealLost, useContacts } from '@/hooks/useData';
-import { useTeam } from '@/hooks/useData';
+import { Plus, MessageCircle, MoreVertical, Trophy, XCircle, Filter } from 'lucide-react';
+import { useKanban, usePipelines, useUpdateDeal, useCreateDeal, useMarkDealWon, useMarkDealLost, useContacts, useTeam } from '@/hooks/useData';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRole } from '@/hooks/useRole';
+import { useAuth } from '@/context/AuthContext';
 import { Button, Modal, Input, Select, Textarea, Spinner, EmptyState, Card } from '@/components/ui';
 import { formatCurrency, getWhatsAppUrl, cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
@@ -172,20 +172,27 @@ function CreateDealModal({ open, onClose, pipeline }) {
 
 export default function Pipeline() {
   const { data: pipelinesData, isLoading: loadingPipelines } = usePipelines();
+  const { data: teamData } = useTeam();
+  const { user } = useAuth();
+  const { canWrite, role } = useRole();
   const [activePipelineId, setActivePipelineId] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const { canWrite } = useRole();
+
+  // Sales reps default to seeing their own deals
+  const defaultFilter = role === 'sales_rep' ? user?._id || '' : '';
+  const [assignedToFilter, setAssignedToFilter] = useState(defaultFilter);
 
   const pipelines = pipelinesData?.pipelines || [];
   const pipelineId = activePipelineId || pipelines[0]?._id;
 
-  const { data, isLoading } = useKanban(pipelineId);
+  const { data, isLoading } = useKanban(pipelineId, assignedToFilter);
   const { mutate: updateDeal } = useUpdateDeal();
   const { mutate: markWon } = useMarkDealWon();
   const { mutate: markLost } = useMarkDealLost();
 
   const pipeline = data?.pipeline;
   const kanban = data?.kanban || [];
+  const teamMembers = (teamData?.users || []).filter((u) => u.isActive !== false);
 
   const queryClient = useQueryClient();
 
@@ -198,7 +205,7 @@ export default function Pipeline() {
     if (!newStage) return;
 
     // Optimistic update — move the card in the cache instantly
-    queryClient.setQueryData(['kanban', pipelineId], (old) => {
+    queryClient.setQueryData(['kanban', pipelineId, assignedToFilter], (old) => {
       if (!old) return old;
       const updated = {
         ...old,
@@ -235,7 +242,7 @@ export default function Pipeline() {
     <div className="space-y-4 h-full">
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {pipelines.map((p) => (
             <button
               key={p._id}
@@ -249,11 +256,30 @@ export default function Pipeline() {
             </button>
           ))}
         </div>
-        {canWrite && (
-          <Button onClick={() => setShowCreate(true)}>
-            <Plus className="w-4 h-4" /> New deal
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Assigned to filter */}
+          <div className="flex items-center gap-2">
+            <Filter className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <select
+              value={assignedToFilter}
+              onChange={(e) => setAssignedToFilter(e.target.value)}
+              className="h-8 px-2 pr-7 rounded-lg border border-border bg-background text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">All deals</option>
+              <option value={user?._id}>My deals</option>
+              {teamMembers
+                .filter((m) => m._id !== user?._id)
+                .map((m) => (
+                  <option key={m._id} value={m._id}>{m.name}</option>
+                ))}
+            </select>
+          </div>
+          {canWrite && (
+            <Button onClick={() => setShowCreate(true)}>
+              <Plus className="w-4 h-4" /> New deal
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Pipeline summary */}
