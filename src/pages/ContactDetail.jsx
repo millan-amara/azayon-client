@@ -5,7 +5,7 @@
 //   Plus, Clock, FileText, PhoneCall, AtSign,
 //   Sparkles, Copy, Check, RefreshCw, X,
 // } from 'lucide-react';
-// import { useContact, useUpdateContact, useAddTimeline } from '@/hooks/useData';
+// import { useContact, useUpdateContact, useAddTimeline, useTeam } from '@/hooks/useData';
 // import { useRole } from '@/hooks/useRole';
 // import {
 //   Button, Card, Badge, Modal, Input, Select,
@@ -307,19 +307,25 @@
 
 // function EditContactModal({ open, onClose, contact }) {
 //   const { mutateAsync, isPending } = useUpdateContact();
+//   const { data: teamData } = useTeam();
 //   const [form, setForm] = useState({
 //     firstName: contact.firstName || '', lastName: contact.lastName || '',
 //     email: contact.email || '', phone: contact.phone || '',
 //     company: contact.company || '', jobTitle: contact.jobTitle || '',
 //     status: contact.status || 'lead', notes: contact.notes || '',
+//     assignedTo: contact.assignedTo?._id || contact.assignedTo || '',
 //   });
 //   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
 //   const handleSubmit = async (e) => {
 //     e.preventDefault();
-//     await mutateAsync({ id: contact._id, ...form });
+//     const updates = { ...form };
+//     if (!updates.assignedTo) delete updates.assignedTo;
+//     await mutateAsync({ id: contact._id, ...updates });
 //     onClose();
 //   };
+
+//   const teamMembers = (teamData?.users || []).filter((u) => u.isActive !== false);
 
 //   return (
 //     <Modal open={open} onClose={onClose} title="Edit contact">
@@ -334,6 +340,18 @@
 //         <Input label="Job title" value={form.jobTitle} onChange={set('jobTitle')} />
 //         <Select label="Status" value={form.status} onChange={set('status')}
 //           options={[{ value: 'lead', label: 'Lead' }, { value: 'prospect', label: 'Prospect' }, { value: 'customer', label: 'Customer' }, { value: 'churned', label: 'Churned' }]} />
+//         <Select
+//           label="Assigned to"
+//           value={form.assignedTo}
+//           onChange={set('assignedTo')}
+//           options={[
+//             { value: '', label: 'Unassigned' },
+//             ...teamMembers.map((u) => ({
+//               value: u._id,
+//               label: u.role === 'viewer' ? `${u.name} (viewer)` : u.name,
+//             })),
+//           ]}
+//         />
 //         <Textarea label="Notes" value={form.notes} onChange={set('notes')} rows={3} />
 //         <div className="flex gap-3 pt-2">
 //           <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
@@ -499,6 +517,8 @@
 //     </div>
 //   );
 // }
+
+
 
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
@@ -946,11 +966,11 @@ export default function ContactDetail() {
         )}
       </Card>
 
-      <div className="flex gap-1 border-b border-border">
+      <div className="flex gap-1 border-b border-border overflow-x-auto">
         {[{ id: 'timeline', label: `Timeline (${contact.timeline?.length || 0})` }, { id: 'deals', label: `Deals (${deals.length})` }, { id: 'tasks', label: `Tasks (${tasks.length})` }, { id: 'files', label: `Files (${contact.attachments?.length || 0})` }]
           .map((tab) => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={cn('px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px',
+              className={cn('px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap',
                 activeTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
               )}>
               {tab.label}
