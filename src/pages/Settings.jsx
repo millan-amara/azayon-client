@@ -406,7 +406,8 @@ function BillingTab() {
   if (!billing) return <div className="flex justify-center py-8"><div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
 
   const { plan, status, isOnTrial, trialDaysLeft, subscribedAt } = billing;
-  const isActive = status === 'active';
+  const isActive = status === 'active' || status === 'cancelling';
+  const isCancelling = status === 'cancelling';
   const isPastDue = status === 'past_due';
   const isCancelled = status === 'cancelled';
 
@@ -457,7 +458,9 @@ function BillingTab() {
               <>
                 <p className="text-2xl font-bold text-primary">Growth — KES 3,000/mo</p>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  Active since {formatDate(subscribedAt)}
+                  {isCancelling
+                    ? 'Cancels at end of billing period — features stay active until then'
+                    : `Active since ${formatDate(subscribedAt)}`}
                 </p>
               </>
             ) : isPastDue ? (
@@ -485,10 +488,13 @@ function BillingTab() {
                 {isPastDue ? 'Update payment' : isCancelled ? 'Resubscribe' : 'Upgrade to Growth'}
               </Button>
             )}
-            {isActive && !isCancelled && (
+            {isActive && !isCancelling && (
               <Button variant="outline" size="sm" onClick={() => setShowCancelModal(true)}>
                 Cancel subscription
               </Button>
+            )}
+            {isCancelling && (
+              <p className="text-xs text-muted-foreground">Cancellation scheduled</p>
             )}
           </div>
         </div>
