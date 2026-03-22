@@ -56,16 +56,6 @@ const FEATURE_COPY = {
 
 const PRICES = [
   {
-    key: 'founding_monthly',
-    label: 'Founding Member',
-    price: 'KES 1,500',
-    period: '/month',
-    badge: 'Limited — only 20 spots',
-    badgeColor: 'bg-amber-100 text-amber-700',
-    highlight: false,
-    features: ['Everything in Growth', 'Locked-in forever', 'Priority support', 'Your name in the credits'],
-  },
-  {
     key: 'growth_monthly',
     label: 'Growth',
     price: 'KES 3,000',
@@ -83,7 +73,7 @@ const PRICES = [
     badge: '2 months free',
     badgeColor: 'bg-green-100 text-green-700',
     highlight: false,
-    features: ['Everything in Growth monthly', 'Save KES 11,000/year', 'Priority support'],
+    features: ['Everything in Growth monthly', 'Save KES 11,000/year'],
   },
 ];
 
@@ -118,11 +108,6 @@ function UpgradeModal({ open, feature, onClose }) {
   const [loading, setLoading] = useState(null); // which price key is loading
   const copy = FEATURE_COPY[feature] || FEATURE_COPY.automations;
 
-  const filteredPrices = PRICES.filter((p) => {
-    if (p.key === 'founding_monthly' && !billing?.foundingMemberAvailable) return false;
-    return true;
-  });
-
   const handleCheckout = async (priceKey) => {
     setLoading(priceKey);
     try {
@@ -148,19 +133,9 @@ function UpgradeModal({ open, feature, onClose }) {
           </div>
         </div>
 
-        {/* Founding member slot indicator */}
-        {billing?.foundingMemberAvailable && (
-          <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <span className="text-amber-600 text-sm">🔥</span>
-            <p className="text-xs text-amber-700">
-              <strong>Founding Member offer:</strong> Only {billing.foundingMemberSlotsLeft} of 20 spots remaining — lock in KES 1,500/month forever.
-            </p>
-          </div>
-        )}
-
         {/* Pricing options */}
         <div className="space-y-2">
-          {filteredPrices.map((plan) => (
+          {PRICES.map((plan) => (
             <div
               key={plan.key}
               className={cn(

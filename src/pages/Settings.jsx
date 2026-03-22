@@ -319,27 +319,6 @@ function TeamTab({ user, teamData, onInvite }) {
           </div>
         </div>
       </Modal>
-
-      {/* <Modal
-  open={!!deactivatingMember}
-  onClose={() => setDeactivatingMember(null)}
-  title="Deactivate team member"
->
-  <div className="space-y-4">
-    <p className="text-sm text-muted-foreground">
-      Are you sure you want to deactivate <strong>{deactivatingMember?.name}</strong>?
-      They will lose access immediately but all their data will be kept.
-    </p>
-    <div className="flex gap-3">
-      <Button variant="outline" className="flex-1" onClick={() => setDeactivatingMember(null)}>
-        Cancel
-      </Button>
-      <Button variant="destructive" className="flex-1" onClick={confirmDeactivate}>
-        Deactivate
-      </Button>
-    </div>
-  </div>
-</Modal> */}
     </Card>
   );
 }
@@ -426,7 +405,7 @@ function BillingTab() {
 
   if (!billing) return <div className="flex justify-center py-8"><div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
 
-  const { plan, status, isOnTrial, trialDaysLeft, subscribedAt, isFoundingMember, foundingMemberSlotsLeft, foundingMemberAvailable } = billing;
+  const { plan, status, isOnTrial, trialDaysLeft, subscribedAt } = billing;
   const isActive = status === 'active';
   const isPastDue = status === 'past_due';
   const isCancelled = status === 'cancelled';
@@ -453,11 +432,6 @@ function BillingTab() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-sm font-semibold">Current plan</h3>
-              {isFoundingMember && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">
-                  🏆 Founding Member
-                </span>
-              )}
             </div>
 
             {isOnTrial ? (
@@ -481,9 +455,7 @@ function BillingTab() {
               </>
             ) : isActive ? (
               <>
-                <p className="text-2xl font-bold text-primary">
-                  Growth {isFoundingMember ? '— KES 1,500/mo' : '— KES 3,000/mo'}
-                </p>
+                <p className="text-2xl font-bold text-primary">Growth — KES 3,000/mo</p>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   Active since {formatDate(subscribedAt)}
                 </p>
@@ -545,24 +517,6 @@ function BillingTab() {
           ))}
         </div>
       </Card>
-
-      {/* Founding member offer */}
-      {(isOnTrial || (!isActive && !isCancelled)) && foundingMemberAvailable && (
-        <div className="border border-amber-200 bg-amber-50 rounded-xl p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-amber-800">🏆 Founding Member offer</p>
-              <p className="text-xs text-amber-700 mt-0.5">
-                Lock in KES 1,500/month forever — only {foundingMemberSlotsLeft} of 20 spots left.
-              </p>
-            </div>
-            <Button size="sm" variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-100 shrink-0"
-              onClick={() => showUpgrade('automations')}>
-              Claim spot <ArrowRight className="w-3.5 h-3.5" />
-            </Button>
-          </div>
-        </div>
-      )}
 
       {/* Payment info */}
       <p className="text-xs text-muted-foreground text-center">

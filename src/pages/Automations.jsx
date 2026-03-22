@@ -592,24 +592,44 @@ function EditAutomationModal({ open, onClose, automation }) {
   const { data: teamData } = useTeam();
   const { data: pipelinesData } = usePipelines();
   const [step, setStep] = useState(1);
+
+  // Extract existing stage filter from conditions if present
+  const existingStageCondition = automation.conditions?.find((c) => c.field === 'deal.stageName' && c.operator === 'equals');
+  const existingPipeline = pipelinesData?.pipelines?.find((p) =>
+    p.stages.some((s) => s.name === existingStageCondition?.value)
+  );
+  const existingStage = existingPipeline?.stages?.find((s) => s.name === existingStageCondition?.value);
+
   const [form, setForm] = useState({
     name: automation.name || '',
     triggerType: automation.trigger?.type || 'contact.created',
     inactiveDays: automation.trigger?.config?.inactiveDays || 3,
+    triggerPipelineId: existingPipeline?._id || '',
+    triggerStageId: existingStage?._id || '',
     actionType: automation.actions?.[0]?.type || 'send_webhook',
     actionConfig: automation.actions?.[0]?.config || {},
   });
 
   const users = (teamData?.users || []).filter((u) => u.isActive !== false);
   const pipelines = pipelinesData?.pipelines || [];
+  const selectedTriggerPipeline = pipelines.find((p) => p._id === form.triggerPipelineId);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     const triggerConfig = form.triggerType === 'deal.inactive' ? { inactiveDays: parseInt(form.inactiveDays) } : {};
+
+    // Build conditions — add stage filter if stage_changed and a stage is selected
+    let conditions = automation.conditions?.filter((c) => !(c.field === 'deal.stageName' && c.operator === 'equals')) || [];
+    if (form.triggerType === 'deal.stage_changed' && form.triggerStageId && selectedTriggerPipeline) {
+      const stage = selectedTriggerPipeline.stages.find((s) => s._id === form.triggerStageId);
+      if (stage) conditions = [...conditions, { field: 'deal.stageName', operator: 'equals', value: stage.name }];
+    }
+
     await mutateAsync({
       id: automation._id,
       name: form.name,
       trigger: { type: form.triggerType, config: triggerConfig },
+      conditions,
       actions: [{ type: form.actionType, config: form.actionConfig }],
     });
     onClose();
@@ -662,6 +682,28 @@ function EditAutomationModal({ open, onClose, automation }) {
                 <Input label="Inactive for how many days?" type="number" min="1" value={form.inactiveDays}
                   onChange={(e) => setForm(f => ({ ...f, inactiveDays: e.target.value }))} />
               )}
+              {form.triggerType === 'deal.stage_changed' && (
+                <div className="space-y-3 pt-1">
+                  <Select
+                    label="Which pipeline?"
+                    value={form.triggerPipelineId}
+                    onChange={(e) => setForm(f => ({ ...f, triggerPipelineId: e.target.value, triggerStageId: '' }))}
+                    options={[{ value: '', label: 'Select pipeline...' }, ...pipelines.map((p) => ({ value: p._id, label: p.name }))]}
+                  />
+                  {selectedTriggerPipeline && (
+                    <Select
+                      label="Fire when deal moves to"
+                      value={form.triggerStageId}
+                      onChange={(e) => setForm(f => ({ ...f, triggerStageId: e.target.value }))}
+                      options={[
+                        { value: '', label: 'Any stage change' },
+                        ...selectedTriggerPipeline.stages.filter((s) => !s.isWon && !s.isLost).map((s) => ({ value: s._id, label: s.name })),
+                      ]}
+                    />
+                  )}
+                  <p className="text-xs text-muted-foreground">Leave as "Any stage change" to fire on every stage move.</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -707,6 +749,9 @@ function EditAutomationModal({ open, onClose, automation }) {
                     <span className="text-xs text-muted-foreground">When: </span>
                     <span className="text-xs">{TRIGGER_LABELS[form.triggerType]}</span>
                     {form.triggerType === 'deal.inactive' && <span className="text-xs text-muted-foreground"> (after {form.inactiveDays} days)</span>}
+                    {form.triggerType === 'deal.stage_changed' && form.triggerStageId && selectedTriggerPipeline && (
+                      <span className="text-xs text-muted-foreground"> → {selectedTriggerPipeline.stages.find(s => s._id === form.triggerStageId)?.name}</span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-start gap-2">

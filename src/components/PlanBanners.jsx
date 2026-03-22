@@ -21,7 +21,7 @@ export function TrialBanner() {
       'flex items-center justify-between gap-3 px-4 py-2.5 text-sm',
       isUrgent
         ? 'bg-red-500 text-white'
-        : 'bg-primary text-primary-foreground'
+        : 'bg-orange-100 text-orange-800'
     )}>
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <Zap className="w-4 h-4 shrink-0" />
