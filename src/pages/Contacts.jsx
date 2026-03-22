@@ -484,7 +484,6 @@
 //     </div>
 //   );
 // }
-
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Plus, Upload, MessageCircle, Phone, Mail, Sparkles, Check, X, AlertCircle } from 'lucide-react';
@@ -841,8 +840,8 @@ export default function Contacts() {
         />
       )}
       {/* Toolbar */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             className="w-full h-9 pl-9 pr-3 rounded-lg border border-border bg-background text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -851,36 +850,38 @@ export default function Contacts() {
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
         </div>
-        <select
-          value={status}
-          onChange={(e) => { setStatus(e.target.value); setPage(1); }}
-          className="h-9 px-3 rounded-lg border border-border bg-background text-sm focus-visible:outline-none"
-        >
-          {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-        <select
-          value={assignedTo}
-          onChange={(e) => { setAssignedTo(e.target.value); setPage(1); }}
-          className="h-9 px-3 rounded-lg border border-border bg-background text-sm focus-visible:outline-none"
-        >
-          <option value="">All contacts</option>
-          <option value={user?._id}>My contacts</option>
-          {teamMembers
-            .filter((m) => m._id !== user?._id)
-            .map((m) => (
+        <div className="flex items-center gap-2 flex-wrap">
+          <select
+            value={status}
+            onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+            className="h-9 px-3 rounded-lg border border-border bg-background text-sm focus-visible:outline-none flex-1 sm:flex-none"
+          >
+            {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <select
+            value={assignedTo}
+            onChange={(e) => { setAssignedTo(e.target.value); setPage(1); }}
+            className="h-9 px-3 rounded-lg border border-border bg-background text-sm focus-visible:outline-none flex-1 sm:flex-none"
+          >
+            <option value="">All contacts</option>
+            <option value={user?._id}>My contacts</option>
+            {teamMembers.filter((m) => m._id !== user?._id).map((m) => (
               <option key={m._id} value={m._id}>{m.name}</option>
             ))}
-        </select>
-        {canWrite && (
-          <Button variant="outline" onClick={() => setShowImport(true)}>
-            <Upload className="w-4 h-4" /> Import CSV
-          </Button>
-        )}
-        {canWrite && (
-          <Button onClick={() => setShowCreate(true)}>
-            <Plus className="w-4 h-4" /> Add contact
-          </Button>
-        )}
+          </select>
+          {canWrite && (
+            <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
+              <Upload className="w-4 h-4" />
+              <span className="hidden sm:inline">Import</span>
+            </Button>
+          )}
+          {canWrite && (
+            <Button size="sm" onClick={() => setShowCreate(true)}>
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Add contact</span>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Table */}
