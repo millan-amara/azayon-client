@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
   Zap, Plus, ToggleLeft, ToggleRight, Trash2, Play, Clock,
-  ChevronDown, AlertCircle, CheckCircle2, Brain, Search, Rocket,
+  ChevronDown, AlertCircle, CheckCircle2, Brain, Search, Rocket, Pencil,
 } from 'lucide-react';
 import {
   useAutomations, useAutomationTemplates,
-  useCreateAutomation, useToggleAutomation, useDeleteAutomation,
-  useTeam,
+  useCreateAutomation, useUpdateAutomation, useToggleAutomation, useDeleteAutomation,
+  useTeam, usePipelines,
 } from '@/hooks/useData';
-import { usePipelines } from '@/hooks/useData';
 import { useRole } from '@/hooks/useRole';
 import { usePlan } from '@/context/PlanContext';
 import { LockedFeature, UpgradeButton } from '@/components/Upgrade';
@@ -38,9 +37,9 @@ const ACTION_LABELS = {
 
 // ─── TEMPLATE CARD ────────────────────────────────────────────────────────────
 
-function TemplateCard({ template, activeTriggers, onActivate }) {
+function TemplateCard({ template, activeTemplateIds, activeTriggers, onActivate }) {
   const { canWrite } = useRole();
-  const isActive = activeTriggers?.includes(template.trigger.type);
+  const isActive = activeTemplateIds?.includes(template.id);
 
   return (
     <div className={cn(
@@ -115,12 +114,13 @@ function ActivateTemplateModal({ open, onClose, onSuccess, template, hasDuplicat
     assignUserId: '',
     pipelineId: '',
     stageId: '',
+    triggerStageId: '',
     confirmedDuplicate: false,
   });
 
   useEffect(() => {
     if (template) {
-      setConfig({ name: template.name, webhookUrl: '', assignUserId: '', pipelineId: '', stageId: '', confirmedDuplicate: false });
+      setConfig({ name: template.name, webhookUrl: '', assignUserId: '', pipelineId: '', stageId: '', triggerStageId: '', confirmedDuplicate: false });
       setStep(1);
     }
   }, [template?.id]);
@@ -130,17 +130,20 @@ function ActivateTemplateModal({ open, onClose, onSuccess, template, hasDuplicat
   const needsWebhook = template.actions.some((a) => a.type === 'send_webhook');
   const needsAssignUser = template.actions.some((a) => a.type === 'assign_to_user');
   const needsDealConfig = template.actions.some((a) => a.type === 'create_deal');
-  const needsExtraConfig = needsWebhook || needsAssignUser || needsDealConfig;
+  const needsStageFilter = template.trigger.type === 'deal.stage_changed' && template.id === 'proposal_task';
+  const needsExtraConfig = needsWebhook || needsAssignUser || needsDealConfig || needsStageFilter;
   const showDuplicateWarning = hasDuplicate && !config.confirmedDuplicate;
 
   const users = (teamData?.users || []).filter((u) => u.isActive !== false);
-  const selectedPipeline = pipelinesData?.pipelines?.find((p) => p._id === config.pipelineId);
+  const pipelines = pipelinesData?.pipelines || [];
+  const selectedPipeline = pipelines.find((p) => p._id === config.pipelineId);
 
   const isValid = () => {
     if (!config.name) return false;
     if (needsWebhook && !config.webhookUrl) return false;
     if (needsAssignUser && !config.assignUserId) return false;
     if (needsDealConfig && (!config.pipelineId || !config.stageId)) return false;
+    if (needsStageFilter && (!config.pipelineId || !config.triggerStageId)) return false;
     return true;
   };
 
@@ -151,8 +154,18 @@ function ActivateTemplateModal({ open, onClose, onSuccess, template, hasDuplicat
       if (a.type === 'create_deal') return { ...a, config: { ...a.config, pipelineId: config.pipelineId, stageId: config.stageId } };
       return a;
     });
-    await mutateAsync({ templateId: template.id, name: config.name, actions });
-    onSuccess(); // onSuccess already shows toast and switches tab
+
+    // For stage filter templates, add a condition on stageName
+    let conditions = template.conditions || [];
+    if (needsStageFilter && config.triggerStageId && selectedPipeline) {
+      const stage = selectedPipeline.stages.find((s) => s._id === config.triggerStageId);
+      if (stage) {
+        conditions = [{ field: 'deal.stageName', operator: 'equals', value: stage.name }];
+      }
+    }
+
+    await mutateAsync({ templateId: template.id, name: config.name, actions, conditions });
+    onSuccess();
   };
 
   // Steps: 1 = review/duplicate check, 2 = configure (only if needed)
@@ -287,6 +300,29 @@ function ActivateTemplateModal({ open, onClose, onSuccess, template, hasDuplicat
               </>
             )}
 
+            {needsStageFilter && (
+              <>
+                <Select
+                  label="Which pipeline? *"
+                  value={config.pipelineId}
+                  onChange={(e) => setConfig(c => ({ ...c, pipelineId: e.target.value, triggerStageId: '' }))}
+                  options={[{ value: '', label: 'Select pipeline...' }, ...pipelines.map((p) => ({ value: p._id, label: p.name }))]}
+                />
+                {selectedPipeline && (
+                  <Select
+                    label="Create task when deal moves to *"
+                    value={config.triggerStageId || ''}
+                    onChange={(e) => setConfig(c => ({ ...c, triggerStageId: e.target.value }))}
+                    options={[
+                      { value: '', label: 'Any stage change' },
+                      ...selectedPipeline.stages.filter((s) => !s.isWon && !s.isLost).map((s) => ({ value: s._id, label: s.name })),
+                    ]}
+                  />
+                )}
+                <p className="text-xs text-muted-foreground">Leave stage as "Any stage change" to create a task on every stage move.</p>
+              </>
+            )}
+
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setStep(1)}>Back</Button>
               <Button className="flex-1" loading={isPending} disabled={!isValid()} onClick={handleActivate}>
@@ -352,7 +388,7 @@ function ActionConfig({ actionType, config, onChange, users, pipelines }) {
       return (
         <div className="space-y-3">
           <Input label="Deal title" value={config.dealTitle || '{{contact.firstName}} {{contact.lastName}} — New opportunity'} onChange={(e) => update('dealTitle', e.target.value)} />
-          <Select label="Pipeline *" value={config.pipelineId || ''} onChange={(e) => { update('pipelineId', e.target.value); update('stageId', ''); }}
+          <Select label="Pipeline *" value={config.pipelineId || ''} onChange={(e) => onChange({ ...config, pipelineId: e.target.value, stageId: '' })}
             options={[{ value: '', label: 'Select pipeline...' }, ...pipelines.map((p) => ({ value: p._id, label: p.name }))]} />
           {selectedPipeline && (
             <Select label="Starting stage *" value={config.stageId || ''} onChange={(e) => update('stageId', e.target.value)}
@@ -377,13 +413,12 @@ function ActionConfig({ actionType, config, onChange, users, pipelines }) {
     case 'update_deal_stage':
       return (
         <div className="space-y-3">
-          <Select label="Pipeline *" value={config.pipelineId || ''} onChange={(e) => { update('pipelineId', e.target.value); update('stageId', ''); update('stageName', ''); }}
+          <Select label="Pipeline *" value={config.pipelineId || ''} onChange={(e) => onChange({ ...config, pipelineId: e.target.value, stageId: '', stageName: '' })}
             options={[{ value: '', label: 'Select pipeline...' }, ...pipelines.map((p) => ({ value: p._id, label: p.name }))]} />
           {selectedPipeline && (
             <Select label="Move deal to stage *" value={config.stageId || ''} onChange={(e) => {
               const stage = selectedPipeline.stages.find((s) => s._id === e.target.value);
-              update('stageId', e.target.value);
-              update('stageName', stage?.name || '');
+              onChange({ ...config, stageId: e.target.value, stageName: stage?.name || '' });
             }}
               options={[{ value: '', label: 'Select stage...' }, ...selectedPipeline.stages.map((s) => ({ value: s._id, label: s.name }))]} />
           )}
@@ -550,9 +585,163 @@ function CustomBuilderModal({ open, onClose }) {
   );
 }
 
+// ─── EDIT AUTOMATION MODAL ───────────────────────────────────────────────────
+
+function EditAutomationModal({ open, onClose, automation }) {
+  const { mutateAsync, isPending } = useUpdateAutomation();
+  const { data: teamData } = useTeam();
+  const { data: pipelinesData } = usePipelines();
+  const [step, setStep] = useState(1);
+  const [form, setForm] = useState({
+    name: automation.name || '',
+    triggerType: automation.trigger?.type || 'contact.created',
+    inactiveDays: automation.trigger?.config?.inactiveDays || 3,
+    actionType: automation.actions?.[0]?.type || 'send_webhook',
+    actionConfig: automation.actions?.[0]?.config || {},
+  });
+
+  const users = (teamData?.users || []).filter((u) => u.isActive !== false);
+  const pipelines = pipelinesData?.pipelines || [];
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const triggerConfig = form.triggerType === 'deal.inactive' ? { inactiveDays: parseInt(form.inactiveDays) } : {};
+    await mutateAsync({
+      id: automation._id,
+      name: form.name,
+      trigger: { type: form.triggerType, config: triggerConfig },
+      actions: [{ type: form.actionType, config: form.actionConfig }],
+    });
+    onClose();
+    setStep(1);
+  };
+
+  const steps = ['Trigger', 'Action', 'Review'];
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Edit: ${automation.name}`}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Step indicator */}
+        <div className="flex items-center gap-1 mb-2">
+          {steps.map((label, i) => {
+            const s = i + 1;
+            return (
+              <div key={s} className="flex items-center flex-1">
+                <div className="flex items-center gap-1.5">
+                  <div className={cn(
+                    'w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold',
+                    s === step ? 'bg-primary text-primary-foreground' :
+                    s < step ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'
+                  )}>
+                    {s < step ? <CheckCircle2 className="w-3 h-3" /> : s}
+                  </div>
+                  <span className={cn('text-xs hidden sm:block', s === step ? 'text-foreground font-medium' : 'text-muted-foreground')}>{label}</span>
+                </div>
+                {s < 3 && <div className={cn('flex-1 h-0.5 mx-2', s < step ? 'bg-primary' : 'bg-muted')} />}
+              </div>
+            );
+          })}
+        </div>
+
+        {step === 1 && (
+          <div className="space-y-4">
+            <Input label="Automation name *" value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} required />
+            <div className="space-y-2">
+              <label className="text-sm font-medium">When this happens</label>
+              <div className="space-y-1.5">
+                {Object.entries(TRIGGER_LABELS).map(([value, label]) => (
+                  <button key={value} type="button" onClick={() => setForm(f => ({ ...f, triggerType: value }))}
+                    className={cn('w-full p-3 rounded-lg border text-left text-sm transition-all',
+                      form.triggerType === value ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                    )}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {form.triggerType === 'deal.inactive' && (
+                <Input label="Inactive for how many days?" type="number" min="1" value={form.inactiveDays}
+                  onChange={(e) => setForm(f => ({ ...f, inactiveDays: e.target.value }))} />
+              )}
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Then do this</label>
+              <div className="space-y-1.5">
+                {Object.entries(ACTION_LABELS).map(([value, label]) => (
+                  <button key={value} type="button"
+                    onClick={() => setForm(f => ({ ...f, actionType: value, actionConfig: value === f.actionType ? f.actionConfig : {} }))}
+                    className={cn('w-full p-3 rounded-lg border text-left text-sm transition-all',
+                      form.actionType === value ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                    )}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="border-t border-border pt-4">
+              <ActionConfig
+                actionType={form.actionType}
+                config={form.actionConfig}
+                onChange={(newConfig) => setForm(f => ({ ...f, actionConfig: newConfig }))}
+                users={users}
+                pipelines={pipelines}
+              />
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="space-y-3">
+            <div className="bg-muted/40 rounded-xl p-4 border border-border space-y-3">
+              <p className="text-sm font-semibold">{form.name}</p>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
+                    <Zap className="w-3 h-3 text-blue-600" />
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">When: </span>
+                    <span className="text-xs">{TRIGGER_LABELS[form.triggerType]}</span>
+                    {form.triggerType === 'deal.inactive' && <span className="text-xs text-muted-foreground"> (after {form.inactiveDays} days)</span>}
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center shrink-0 mt-0.5">
+                    <Rocket className="w-3 h-3 text-green-600" />
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">Then: </span>
+                    <span className="text-xs">{ACTION_LABELS[form.actionType]}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-3 pt-2 border-t border-border">
+          {step > 1 && <Button type="button" variant="outline" onClick={() => setStep(s => s - 1)}>Back</Button>}
+          <div className="flex-1" />
+          {step < 3 ? (
+            <Button type="button" onClick={() => setStep(s => s + 1)} disabled={step === 1 && !form.name}>
+              Continue
+            </Button>
+          ) : (
+            <Button type="submit" loading={isPending}>Save changes</Button>
+          )}
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 // ─── ADVANCED TEMPLATES ───────────────────────────────────────────────────────
 
-function AdvancedTemplates({ templates, activeTriggers, onActivate }) {
+function AdvancedTemplates({ templates, activeTriggers, activeTemplateIds, onActivate }) {
   const [open, setOpen] = useState(false);
   if (templates.length === 0) return null;
   return (
@@ -577,7 +766,7 @@ function AdvancedTemplates({ templates, activeTriggers, onActivate }) {
             <p className="text-xs text-blue-700">These require an n8n instance or webhook URL. If you're not sure what that means, skip this for now.</p>
           </div>
           {templates.map((template) => (
-            <TemplateCard key={template.id} template={template} activeTriggers={activeTriggers} onActivate={onActivate} />
+            <TemplateCard key={template.id} template={template} activeTriggers={activeTriggers} activeTemplateIds={activeTemplateIds} onActivate={onActivate} />
           ))}
         </div>
       )}
@@ -592,11 +781,13 @@ export default function Automations() {
   const { data: templatesData } = useAutomationTemplates();
   const { mutate: toggle } = useToggleAutomation();
   const { mutate: remove } = useDeleteAutomation();
+  const { mutateAsync: updateAutomation } = useUpdateAutomation();
   const { canWrite } = useRole();
   const { canUse } = usePlan();
   const [activeTab, setActiveTab] = useState('my');
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [showBuilder, setShowBuilder] = useState(false);
+  const [editingAutomation, setEditingAutomation] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
 
@@ -604,6 +795,7 @@ export default function Automations() {
   const templates = templatesData?.templates || [];
 
   const activeTriggers = automations.filter((a) => a.isActive).map((a) => a.trigger?.type);
+  const activeTemplateIds = automations.filter((a) => a.isActive && a.templateId).map((a) => a.templateId);
 
   const filteredTemplates = templates.filter((t) => {
     if (selectedCategory !== 'all' && t.category !== selectedCategory) return false;
@@ -716,6 +908,11 @@ export default function Automations() {
                   <div className="flex items-center gap-1 shrink-0">
                     {canWrite && (
                       <>
+                        <button onClick={() => setEditingAutomation(auto)}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
+                          title="Edit automation">
+                          <Pencil className="w-4 h-4" />
+                        </button>
                         <button onClick={() => toggle(auto._id)}
                           className={cn('p-1.5 rounded-lg transition-colors',
                             auto.isActive ? 'text-primary hover:bg-primary/10' : 'text-muted-foreground hover:bg-muted'
@@ -782,7 +979,7 @@ export default function Automations() {
                   </div>
                 </div>
                 {categoryTemplates.map((template) => (
-                  <TemplateCard key={template.id} template={template} activeTriggers={activeTriggers} onActivate={setSelectedTemplate} />
+                  <TemplateCard key={template.id} template={template} activeTriggers={activeTriggers} activeTemplateIds={activeTemplateIds} onActivate={setSelectedTemplate} />
                 ))}
               </div>
             );
@@ -793,6 +990,7 @@ export default function Automations() {
             <AdvancedTemplates
               templates={filteredTemplates.filter((t) => t.category === 'advanced')}
               activeTriggers={activeTriggers}
+              activeTemplateIds={activeTemplateIds}
               onActivate={setSelectedTemplate}
             />
           )}
@@ -807,6 +1005,13 @@ export default function Automations() {
         hasDuplicate={activeTriggers.includes(selectedTemplate?.trigger?.type)}
       />
       <CustomBuilderModal open={showBuilder} onClose={() => setShowBuilder(false)} />
+      {editingAutomation && (
+        <EditAutomationModal
+          open={!!editingAutomation}
+          onClose={() => setEditingAutomation(null)}
+          automation={editingAutomation}
+        />
+      )}
     </div>
   );
 }

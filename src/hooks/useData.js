@@ -277,6 +277,18 @@ export function useCreateAutomation() {
   });
 }
 
+export function useUpdateAutomation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.put(`/automations/${id}`, data).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['automations'] });
+      toast.success('Automation updated');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to update automation'),
+  });
+}
+
 export function useToggleAutomation() {
   const qc = useQueryClient();
   return useMutation({
