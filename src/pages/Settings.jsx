@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Copy, Check, Plus, Eye, EyeOff, MoreVertical, Pencil, Trash2, Clock, X, CreditCard, CheckCircle2, Zap, ArrowRight } from 'lucide-react';
+import { Copy, Check, Plus, Eye, EyeOff, MoreVertical, Pencil, Trash2, Clock, X, CreditCard, CheckCircle2, Zap, ArrowRight, GripVertical, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { useTeam, useInviteUser, useUpdateUser, useRemoveUser, useReactivateUser, usePendingInvites, useCancelInvite } from '@/hooks/useData';
+import { useTeam, useInviteUser, useUpdateUser, useRemoveUser, useReactivateUser, usePendingInvites, useCancelInvite, usePipelines, useCreatePipeline, useUpdatePipeline, useDeletePipeline } from '@/hooks/useData';
 import { Button, Input, Select, Card, Modal, Avatar, Badge } from '@/components/ui';
 import { usePlan } from '@/context/PlanContext';
 import { useUpgrade } from '@/components/Upgrade';
@@ -46,7 +46,7 @@ function ApiKeySection({ org }) {
       </div>
       <div className="mt-4 bg-muted/50 rounded-lg p-3 space-y-1.5">
         <p className="text-xs font-medium">n8n HTTP Request node setup:</p>
-        <p className="text-xs text-muted-foreground">URL: <code className="text-foreground">https://api.azayon.com/api/webhooks/contacts</code></p>
+        <p className="text-xs text-muted-foreground">URL: <code className="text-foreground">https://yourapp.com/api/webhooks/contacts</code></p>
         <p className="text-xs text-muted-foreground">Method: <code className="text-foreground">POST</code></p>
         <p className="text-xs text-muted-foreground">Header: <code className="text-foreground">x-api-key: {visible ? org.apiKey : '(your key above)'}</code></p>
         <p className="text-xs font-medium mt-2">Available endpoints:</p>
@@ -553,6 +553,379 @@ function BillingTab() {
   );
 }
 
+// ─── STAGE COLORS ─────────────────────────────────────────────────────────────
+
+const STAGE_COLORS = [
+  '#94a3b8', '#60a5fa', '#a78bfa', '#f59e0b',
+  '#f97316', '#ec4899', '#14b8a6', '#22c55e', '#ef4444',
+];
+
+// ─── PIPELINES TAB ────────────────────────────────────────────────────────────
+
+function StageRow({ stage, index, total, onChange, onRemove, onMoveUp, onMoveDown }) {
+  return (
+    <div className="flex items-center gap-2 p-2.5 bg-muted/30 rounded-lg border border-border">
+      <div className="flex flex-col gap-0.5 shrink-0">
+        <button
+          type="button"
+          onClick={onMoveUp}
+          disabled={index === 0}
+          className="p-0.5 rounded hover:bg-muted disabled:opacity-20 transition-colors"
+        >
+          <ChevronUp className="w-3 h-3" />
+        </button>
+        <button
+          type="button"
+          onClick={onMoveDown}
+          disabled={index === total - 1}
+          className="p-0.5 rounded hover:bg-muted disabled:opacity-20 transition-colors"
+        >
+          <ChevronDown className="w-3 h-3" />
+        </button>
+      </div>
+
+      {/* Color picker */}
+      <div className="relative shrink-0">
+        <div
+          className="w-6 h-6 rounded-full border-2 border-white shadow cursor-pointer"
+          style={{ backgroundColor: stage.color }}
+        />
+        <input
+          type="color"
+          value={stage.color}
+          onChange={(e) => onChange({ ...stage, color: e.target.value })}
+          className="absolute inset-0 opacity-0 cursor-pointer w-6 h-6 rounded-full"
+          title="Pick colour"
+        />
+      </div>
+
+      <input
+        type="text"
+        value={stage.name}
+        onChange={(e) => onChange({ ...stage, name: e.target.value })}
+        placeholder="Stage name"
+        className="flex-1 h-7 px-2 text-sm bg-background border border-border rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-w-0"
+      />
+
+      <input
+        type="number"
+        value={stage.probability}
+        onChange={(e) => onChange({ ...stage, probability: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) })}
+        min="0"
+        max="100"
+        title="Win probability %"
+        className="w-14 h-7 px-2 text-sm bg-background border border-border rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring text-center shrink-0"
+      />
+      <span className="text-xs text-muted-foreground shrink-0">%</span>
+
+      {!stage.isWon && !stage.isLost && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="p-1 rounded hover:bg-red-100 hover:text-red-600 transition-colors shrink-0"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
+      {(stage.isWon || stage.isLost) && (
+        <span className={cn('text-xs px-1.5 py-0.5 rounded font-medium shrink-0',
+          stage.isWon ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
+        )}>
+          {stage.isWon ? 'Won' : 'Lost'}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function PipelineEditor({ pipeline, onSave, onCancel, isNew }) {
+  const [name, setName] = useState(pipeline?.name || '');
+  const [stages, setStages] = useState(
+    pipeline?.stages?.length
+      ? pipeline.stages.map((s) => ({ ...s, _tempId: s._id || Math.random().toString(36) }))
+      : [
+          { _tempId: '1', name: 'New Lead', order: 0, color: '#94a3b8', probability: 10 },
+          { _tempId: '2', name: 'Contacted', order: 1, color: '#60a5fa', probability: 25 },
+          { _tempId: '3', name: 'Proposal Sent', order: 2, color: '#f59e0b', probability: 70 },
+          { _tempId: 'won', name: 'Won', order: 3, color: '#22c55e', probability: 100, isWon: true },
+          { _tempId: 'lost', name: 'Lost', order: 4, color: '#ef4444', probability: 0, isLost: true },
+        ]
+  );
+  const [saving, setSaving] = useState(false);
+
+  const regularStages = stages.filter((s) => !s.isWon && !s.isLost);
+  const wonStage = stages.find((s) => s.isWon);
+  const lostStage = stages.find((s) => s.isLost);
+
+  const updateStage = (tempId, updated) => {
+    setStages((prev) => prev.map((s) => s._tempId === tempId ? { ...updated, _tempId: tempId } : s));
+  };
+
+  const removeStage = (tempId) => {
+    if (regularStages.length <= 1) return toast.error('Pipeline needs at least one stage');
+    setStages((prev) => prev.filter((s) => s._tempId !== tempId));
+  };
+
+  const addStage = () => {
+    const newStage = {
+      _tempId: Math.random().toString(36),
+      name: '',
+      color: STAGE_COLORS[regularStages.length % STAGE_COLORS.length],
+      probability: 50,
+    };
+    // Insert before won/lost
+    setStages((prev) => {
+      const regular = prev.filter((s) => !s.isWon && !s.isLost);
+      const special = prev.filter((s) => s.isWon || s.isLost);
+      return [...regular, newStage, ...special];
+    });
+  };
+
+  const moveStage = (tempId, direction) => {
+    setStages((prev) => {
+      const regular = prev.filter((s) => !s.isWon && !s.isLost);
+      const special = prev.filter((s) => s.isWon || s.isLost);
+      const idx = regular.findIndex((s) => s._tempId === tempId);
+      if (idx === -1) return prev;
+      const newIdx = idx + direction;
+      if (newIdx < 0 || newIdx >= regular.length) return prev;
+      const reordered = [...regular];
+      [reordered[idx], reordered[newIdx]] = [reordered[newIdx], reordered[idx]];
+      return [...reordered, ...special];
+    });
+  };
+
+  const handleSave = async () => {
+    if (!name.trim()) return toast.error('Pipeline name is required');
+    if (regularStages.some((s) => !s.name.trim())) return toast.error('All stages need a name');
+
+    const orderedStages = [
+      ...regularStages.map((s, i) => ({ ...s, order: i })),
+      ...(wonStage ? [{ ...wonStage, order: regularStages.length }] : []),
+      ...(lostStage ? [{ ...lostStage, order: regularStages.length + 1 }] : []),
+    ].map(({ _tempId, ...rest }) => rest); // strip temp IDs
+
+    setSaving(true);
+    await onSave({ name: name.trim(), stages: orderedStages });
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <Input
+        label="Pipeline name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="e.g. Sales Pipeline, Partnerships"
+      />
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium">Stages</label>
+          <span className="text-xs text-muted-foreground">Name · Colour · Win probability</span>
+        </div>
+        <div className="space-y-1.5">
+          {regularStages.map((stage, index) => (
+            <StageRow
+              key={stage._tempId}
+              stage={stage}
+              index={index}
+              total={regularStages.length}
+              onChange={(updated) => updateStage(stage._tempId, updated)}
+              onRemove={() => removeStage(stage._tempId)}
+              onMoveUp={() => moveStage(stage._tempId, -1)}
+              onMoveDown={() => moveStage(stage._tempId, 1)}
+            />
+          ))}
+          {/* Won and Lost are always shown but not movable */}
+          {wonStage && (
+            <StageRow
+              key={wonStage._tempId}
+              stage={wonStage}
+              index={0}
+              total={1}
+              onChange={(updated) => updateStage(wonStage._tempId, updated)}
+              onRemove={() => {}}
+              onMoveUp={() => {}}
+              onMoveDown={() => {}}
+            />
+          )}
+          {lostStage && (
+            <StageRow
+              key={lostStage._tempId}
+              stage={lostStage}
+              index={0}
+              total={1}
+              onChange={(updated) => updateStage(lostStage._tempId, updated)}
+              onRemove={() => {}}
+              onMoveUp={() => {}}
+              onMoveDown={() => {}}
+            />
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={addStage}
+          className="mt-2 w-full flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground border border-dashed border-border rounded-lg hover:border-primary hover:text-primary transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add stage
+        </button>
+      </div>
+
+      <div className="flex gap-3 pt-2 border-t border-border">
+        <Button type="button" variant="outline" className="flex-1" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="button" className="flex-1" loading={saving} onClick={handleSave}>
+          {isNew ? 'Create pipeline' : 'Save changes'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PipelinesTab() {
+  const { data: pipelinesData } = usePipelines();
+  const { mutateAsync: createPipeline } = useCreatePipeline();
+  const { mutateAsync: updatePipeline } = useUpdatePipeline();
+  const { mutate: deletePipeline } = useDeletePipeline();
+  const [showCreate, setShowCreate] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+
+  const pipelines = pipelinesData?.pipelines || [];
+  const editingPipeline = pipelines.find((p) => p._id === editingId);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold">Pipelines</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Manage your sales pipelines and stages</p>
+        </div>
+        {!showCreate && !editingId && (
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Plus className="w-4 h-4" /> New pipeline
+          </Button>
+        )}
+      </div>
+
+      {/* Create form */}
+      {showCreate && (
+        <Card className="p-5">
+          <h4 className="text-sm font-semibold mb-4">New pipeline</h4>
+          <PipelineEditor
+            isNew
+            onCancel={() => setShowCreate(false)}
+            onSave={async (data) => {
+              await createPipeline(data);
+              setShowCreate(false);
+            }}
+          />
+        </Card>
+      )}
+
+      {/* Pipeline list */}
+      {pipelines.map((pipeline) => (
+        <Card key={pipeline._id} className="p-5">
+          {editingId === pipeline._id ? (
+            <>
+              <h4 className="text-sm font-semibold mb-4">Edit: {pipeline.name}</h4>
+              <PipelineEditor
+                pipeline={pipeline}
+                onCancel={() => setEditingId(null)}
+                onSave={async (data) => {
+                  await updatePipeline({ id: pipeline._id, ...data });
+                  setEditingId(null);
+                }}
+              />
+            </>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h4 className="text-sm font-semibold truncate">{pipeline.name}</h4>
+                  {pipeline.isDefault && (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium shrink-0">
+                      Default
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEditingId(pipeline._id)}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Edit</span>
+                  </Button>
+                  {!pipeline.isDefault && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-red-500 hover:bg-red-50 hover:border-red-200"
+                      onClick={() => setDeletingId(pipeline._id)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Stage preview */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {pipeline.stages
+                  .filter((s) => !s.isLost)
+                  .sort((a, b) => a.order - b.order)
+                  .map((stage, i, arr) => (
+                    <div key={stage._id} className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: stage.color }} />
+                        <span className="text-xs text-muted-foreground">{stage.name}</span>
+                      </div>
+                      {i < arr.length - 1 && <span className="text-muted-foreground/40 text-xs">→</span>}
+                    </div>
+                  ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {pipeline.stages.filter((s) => !s.isWon && !s.isLost).length} active stages
+              </p>
+            </div>
+          )}
+        </Card>
+      ))}
+
+      {/* Delete confirmation modal */}
+      <Modal
+        open={!!deletingId}
+        onClose={() => setDeletingId(null)}
+        title="Delete pipeline"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to delete this pipeline? Any deals in this pipeline will need to be moved manually first. This cannot be undone.
+          </p>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setDeletingId(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white border-0"
+              onClick={() => {
+                deletePipeline(deletingId);
+                setDeletingId(null);
+              }}
+            >
+              Delete pipeline
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 export default function Settings() {
   const { user, org, updateUser } = useAuth();
   const { data: teamData } = useTeam();
@@ -612,6 +985,7 @@ export default function Settings() {
   const tabs = [
     { id: 'general', label: 'General' },
     ...(user?.role === 'admin' ? [{ id: 'billing', label: 'Billing' }] : []),
+    ...(user?.role === 'admin' ? [{ id: 'pipelines', label: 'Pipelines' }] : []),
     { id: 'api', label: 'API & n8n' },
     ...(user?.role === 'admin' ? [{ id: 'team', label: 'Team' }] : []),
     { id: 'profile', label: 'Profile' },
@@ -635,6 +1009,8 @@ export default function Settings() {
       </div>
 
       {activeTab === 'billing' && <BillingTab />}
+
+      {activeTab === 'pipelines' && <PipelinesTab />}
 
       {activeTab === 'general' && (
         <Card className="p-5 space-y-4">

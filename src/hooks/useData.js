@@ -236,6 +236,43 @@ export function useDeleteTask() {
   });
 }
 
+export function useCreatePipeline() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => api.post('/pipelines', data).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pipelines'] });
+      toast.success('Pipeline created');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to create pipeline'),
+  });
+}
+
+export function useUpdatePipeline() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.put(`/pipelines/${id}`, data).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pipelines'] });
+      qc.invalidateQueries({ queryKey: ['kanban'] });
+      toast.success('Pipeline saved');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to save pipeline'),
+  });
+}
+
+export function useDeletePipeline() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.delete(`/pipelines/${id}`).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pipelines'] });
+      toast.success('Pipeline deleted');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to delete pipeline'),
+  });
+}
+
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 
 export function useDashboard() {
