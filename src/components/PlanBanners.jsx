@@ -82,7 +82,7 @@ export function PlanStatusBanner() {
         size="sm"
         variant="outline"
         onClick={() => showUpgrade('automations')}
-        className="h-7 text-xs font-semibold border-white/40 text-white hover:bg-amber-400 hover:text-white shrink-0"
+        className="h-7 text-xs font-semibold border-white/40 text-amber-500 hover:bg-amber-400 hover:text-white shrink-0"
       >
         {isPastDue ? 'Update payment' : 'Resubscribe'}
       </Button>
