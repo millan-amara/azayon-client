@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft, MessageCircle, ExternalLink, Sparkles,
-  RefreshCw, X, Paperclip, Trophy, XCircle, Edit2,
+  RefreshCw, X, Paperclip, Trophy, XCircle, Edit2, Trash2,
 } from 'lucide-react';
-import { useDeal, useMarkDealWon, useMarkDealLost, useUpdateDeal, useTeam } from '@/hooks/useData';
+import { useDeal, useMarkDealWon, useMarkDealLost, useUpdateDeal, useTeam, useDeleteDeal } from '@/hooks/useData';
 import { useRole } from '@/hooks/useRole';
 import { Button, Card, Modal, Input, Select, Textarea, Spinner } from '@/components/ui';
 import { Attachments } from '@/components/Attachments';
@@ -153,9 +153,11 @@ export default function DealDetail() {
   const { data, isLoading } = useDeal(id);
   const { mutate: markWon } = useMarkDealWon();
   const { mutate: markLost } = useMarkDealLost();
+  const { mutate: deleteDeal } = useDeleteDeal();
   const { canWrite } = useRole();
   const [showEdit, setShowEdit] = useState(false);
   const [showLostModal, setShowLostModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [lostReason, setLostReason] = useState('');
 
   if (isLoading) return <div className="flex justify-center py-20"><Spinner /></div>;
@@ -203,7 +205,25 @@ export default function DealDetail() {
               <Button variant="outline" size="sm" onClick={() => setShowEdit(true)}>
                 <Edit2 className="w-4 h-4" /> Edit
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-red-500 hover:bg-red-50 hover:border-red-200"
+                onClick={() => setShowDeleteModal(true)}
+              >
+                <Trash2 className="w-4 h-4" /> Delete
+              </Button>
             </div>
+          )}
+          {canWrite && deal.status !== 'open' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-red-500 hover:bg-red-50 hover:border-red-200"
+              onClick={() => setShowDeleteModal(true)}
+            >
+              <Trash2 className="w-4 h-4" /> Delete
+            </Button>
           )}
         </div>
 
@@ -320,6 +340,29 @@ export default function DealDetail() {
       </Modal>
 
       {showEdit && <EditDealModal open deal={deal} onClose={() => setShowEdit(false)} />}
+
+      <Modal open={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="Delete deal">
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to delete <strong>{deal.title}</strong>?
+            This cannot be undone.
+          </p>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setShowDeleteModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white border-0"
+              onClick={() => {
+                deleteDeal(deal._id);
+                navigate('/pipeline');
+              }}
+            >
+              Delete deal
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
