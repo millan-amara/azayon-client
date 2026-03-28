@@ -24,10 +24,10 @@ function CreateTaskModal({ open, onClose }) {
     e.preventDefault();
     const { reminderOffset, dueDate, dueTime, ...rest } = form;
 
-    // Combine date + time into a single datetime string
-    // Default to 09:00 if no time set so sendAt computes correctly
+    // Combine date + time into a single datetime string with EAT offset (+03:00)
+    // Without this, the server treats the time as UTC causing a 3-hour shift
     const dueDatetime = dueDate
-      ? `${dueDate}T${dueTime || '09:00'}`
+      ? `${dueDate}T${dueTime || '09:00'}:00+03:00`
       : undefined;
 
     const payload = { ...rest };
