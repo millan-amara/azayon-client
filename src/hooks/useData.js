@@ -131,8 +131,10 @@ export function useUpdateDeal() {
     mutationFn: ({ id, ...data }) => api.put(`/deals/${id}`, data).then((r) => r.data),
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ['deals'] });
-      qc.invalidateQueries({ queryKey: ['kanban'] });
       qc.invalidateQueries({ queryKey: ['deal', id] });
+      // Intentionally NOT invalidating ['kanban'] here — Pipeline.jsx manages
+      // kanban cache manually via setQueryData for smooth drag-and-drop.
+      // Invalidating would cause a refetch that overwrites the optimistic update.
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Failed to update deal'),
   });

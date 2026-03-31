@@ -61,7 +61,7 @@ export default function Login() {
                 className="flex h-9 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
-            <Button type="submit" className="w-full" loading={loading}>
+            <Button type="submit" className="w-full bg-primary" loading={loading}>
               Sign in
             </Button>
           </form>
