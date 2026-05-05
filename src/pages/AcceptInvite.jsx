@@ -3,7 +3,6 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Building2, CheckCircle, XCircle } from 'lucide-react';
 import { Button, Input } from '@/components/ui';
 import api from '@/lib/api';
-import toast from 'react-hot-toast';
 
 export default function AcceptInvite() {
   const [searchParams] = useSearchParams();

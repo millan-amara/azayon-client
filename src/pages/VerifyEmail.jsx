@@ -6,19 +6,15 @@ import api from '@/lib/api';
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
-  const [status, setStatus] = useState('loading'); // loading | success | error
-  const [message, setMessage] = useState('');
+  // No-token case is derived from props, not a separate effect+setState
+  const [status, setStatus] = useState(token ? 'loading' : 'error');
+  const [message, setMessage] = useState(token ? '' : 'No verification token found.');
 
   const called = useRef(false);
 
   useEffect(() => {
-    if (!token) {
-      setStatus('error');
-      setMessage('No verification token found.');
-      return;
-    }
-
-    if (called.current) return;  // ← add this
+    if (!token) return;
+    if (called.current) return;
     called.current = true;
 
     api.get(`/auth/verify-email?token=${token}`)

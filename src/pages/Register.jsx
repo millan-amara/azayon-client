@@ -19,7 +19,7 @@ const COUNTRY_CODES = [
   { code: '+1',   flag: '🇺🇸', name: 'United States' },
 ];
 
-function PhoneInput({ value, onChange }) {
+function PhoneInput({ onChange }) {
   const [countryCode, setCountryCode] = useState('+254');
   const [number, setNumber] = useState('');
 

@@ -1,37 +1,33 @@
-import { useState, useEffect, useMemo } from 'react';
-import { CheckSquare, Square, Plus, Trash2, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, List, Calendar as CalendarIcon } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { CheckSquare, Square, Plus, Trash2, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, List, Calendar as CalendarIcon, Repeat } from 'lucide-react';
 import { useTasks, useCreateTask, useUpdateTask, useDeleteTask } from '@/hooks/useData';
 import { useContacts, useTeam } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/hooks/useRole';
 import { Button, Modal, Input, Select, Textarea, Spinner, EmptyState, Card, Badge } from '@/components/ui';
 import { dueDateLabel, formatDate, PRIORITY_COLORS, TASK_TYPE_ICONS, cn } from '@/lib/utils';
-import { startOfWeek, endOfWeek, addDays, isSameDay, isToday, format, startOfDay, endOfDay } from 'date-fns';
+import { startOfWeek, endOfWeek, addDays, isToday, format, startOfDay, endOfDay } from 'date-fns';
 
 function CreateTaskModal({ open, onClose, prefillDate }) {
   const { mutateAsync, isPending } = useCreateTask();
   const { user } = useAuth();
   const { data: contactsData } = useContacts({ limit: 100 });
   const { data: teamData } = useTeam();
+  // Initial dueDate seeded from prefillDate (calendar day click). Caller passes
+  // a `key` tied to prefillDate so remount picks up changes between opens.
   const initialDueDate = prefillDate ? format(prefillDate, 'yyyy-MM-dd') : '';
   const [form, setForm] = useState({
     title: '', type: 'follow_up', priority: 'medium', dueDate: initialDueDate, dueTime: '',
     assignedTo: user?._id || '', contact: '', description: '',
     reminderOffset: '',
+    recurring: false, recurInterval: 30, recurUnit: 'day',
   });
-
-  // Re-sync when reopened with a different prefill
-  useEffect(() => {
-    if (open && prefillDate) {
-      setForm((f) => ({ ...f, dueDate: format(prefillDate, 'yyyy-MM-dd') }));
-    }
-  }, [open, prefillDate]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const { reminderOffset, dueDate, dueTime, ...rest } = form;
+    const { reminderOffset, recurring, recurInterval, recurUnit, dueDate, dueTime, ...rest } = form;
 
     // Combine date + time into a single datetime string with EAT offset (+03:00)
     // Without this, the server treats the time as UTC causing a 3-hour shift
@@ -48,12 +44,17 @@ function CreateTaskModal({ open, onClose, prefillDate }) {
       payload.reminder = { offset: parseInt(reminderOffset), unit: 'minutes' };
     }
 
+    if (recurring && dueDatetime) {
+      payload.recurrence = { interval: parseInt(recurInterval) || 1, unit: recurUnit };
+    }
+
     await mutateAsync(payload);
     onClose();
     setForm({
       title: '', type: 'follow_up', priority: 'medium', dueDate: '', dueTime: '',
       assignedTo: user?._id || '', contact: '', description: '',
       reminderOffset: '',
+      recurring: false, recurInterval: 30, recurUnit: 'day',
     });
   };
 
@@ -142,6 +143,44 @@ function CreateTaskModal({ open, onClose, prefillDate }) {
             )}
           </div>
         )}
+        {/* Recurrence — only when there's a due date */}
+        {form.dueDate && (
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.recurring}
+                onChange={(e) => setForm((f) => ({ ...f, recurring: e.target.checked }))}
+                className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+              />
+              <Repeat className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-sm font-medium">Repeat after completion</span>
+            </label>
+            {form.recurring && (
+              <div className="flex items-center gap-2 pl-6">
+                <span className="text-xs text-muted-foreground">Every</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={form.recurInterval}
+                  onChange={(e) => setForm((f) => ({ ...f, recurInterval: e.target.value }))}
+                  className="w-16 h-8 px-2 rounded-md border border-border bg-background text-sm text-center focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+                <select
+                  value={form.recurUnit}
+                  onChange={(e) => setForm((f) => ({ ...f, recurUnit: e.target.value }))}
+                  className="h-8 px-2 rounded-md border border-border bg-background text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="day">day(s)</option>
+                  <option value="week">week(s)</option>
+                  <option value="month">month(s)</option>
+                </select>
+                <span className="text-xs text-muted-foreground">after completion</span>
+              </div>
+            )}
+          </div>
+        )}
+
         <Select
           label="Link to contact"
           value={form.contact}
@@ -227,6 +266,12 @@ function TaskRow({ task }) {
             )}
             {task.reminder?.sent && (
               <span className="text-xs text-muted-foreground">🔔 Reminder sent</span>
+            )}
+            {task.recurrence?.interval && (
+              <span className="text-xs text-muted-foreground inline-flex items-center gap-0.5">
+                <Repeat className="w-3 h-3" />
+                every {task.recurrence.interval} {task.recurrence.unit}{task.recurrence.interval > 1 ? 's' : ''}
+              </span>
             )}
             {task.assignedTo && (
               <span className="text-xs text-muted-foreground">→ {task.assignedTo.name}</span>
@@ -590,7 +635,8 @@ function TaskCalendar({ assignedTo }) {
     limit: 200,
   });
 
-  const tasks = data?.tasks || [];
+  // Stable reference across renders when data hasn't changed — keeps deps quiet
+  const tasks = useMemo(() => data?.tasks || [], [data]);
 
   // Group by day key (yyyy-MM-dd)
   const byDay = useMemo(() => {
@@ -679,6 +725,7 @@ function TaskCalendar({ assignedTo }) {
       />
 
       <CreateTaskModal
+        key={createPrefill ? createPrefill.toISOString() : 'no-prefill'}
         open={!!createPrefill}
         onClose={() => setCreatePrefill(null)}
         prefillDate={createPrefill}

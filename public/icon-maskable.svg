@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    Maskable PWA icon — keep all important content within the central 80%
+    safe zone (Android may crop up to 10% on each edge).
+    Outer 512x512 = full canvas; safe zone = central 410x410.
+  -->
+  <rect width="512" height="512" rx="96" fill="#5046e4"/>
+  <g transform="translate(176 152)">
+    <!-- Azayon mark, scaled and centered into the safe zone -->
+    <path
+      fill="#ffffff"
+      d="M138.4,239.7c-3.5,4.5,-10.8,2,-10.8,-3.7v-54.6c0,-6.6,-5.4,-12,-12,-12H53.4c-4.9,0,-7.7,-5.5,-4.9,-9.5l39.9,-55.8c5.7,-8,0,-19,-9.8,-19H6.6c-4.9,0,-7.7,-5.5,-4.9,-9.5L53.4,2.5C54.5,1,56.4,0,58.3,0H212.4c4.9,0,7.7,5.5,4.9,9.5l-39.9,55.8c-5.7,8,0,19,9.8,19h60.7c5,0,7.9,5.8,4.7,9.8z"
+    />
+  </g>
+</svg>

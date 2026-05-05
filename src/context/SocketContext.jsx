@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 
@@ -10,33 +10,42 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '/';
 
 export function SocketProvider({ children }) {
   const { user, org } = useAuth();
-  const socketRef = useRef(null);
+  // Hold the socket in state (not a ref) so consumers re-render once it connects.
+  const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     if (!user || !org) return;
 
-    socketRef.current = io(SOCKET_URL, { withCredentials: true });
+    const s = io(SOCKET_URL, { withCredentials: true });
 
-    socketRef.current.on('connect', () => {
+    s.on('connect', () => {
       setConnected(true);
-      socketRef.current.emit('join_org', org._id);
+      s.emit('join_org', org._id);
     });
 
-    socketRef.current.on('disconnect', () => setConnected(false));
+    s.on('disconnect', () => setConnected(false));
+
+    // Publishing the socket instance to consumers is exactly the
+    // "synchronize React with an external system" use case for effects.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSocket(s);
 
     return () => {
-      socketRef.current?.disconnect();
+      s.disconnect();
+      setSocket(null);
+      setConnected(false);
     };
   }, [user, org]);
 
   return (
-    <SocketContext.Provider value={{ socket: socketRef.current, connected }}>
+    <SocketContext.Provider value={{ socket, connected }}>
       {children}
     </SocketContext.Provider>
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useSocket() {
   return useContext(SocketContext);
 }

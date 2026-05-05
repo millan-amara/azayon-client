@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 
 // Trial countdown banner — shown during 7-day trial
 export function TrialBanner() {
-  const { billing, isTrialing, hasFullAccess } = usePlan();
+  const { billing, isTrialing } = usePlan();
   const { showUpgrade } = useUpgrade();
   const [dismissed, setDismissed] = useState(false);
 

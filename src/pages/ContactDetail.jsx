@@ -5,7 +5,7 @@ import {
   Plus, Clock, FileText, PhoneCall, AtSign,
   Sparkles, Copy, Check, RefreshCw, X,
 } from 'lucide-react';
-import { useContact, useUpdateContact, useAddTimeline, useTeam, useDeleteContact } from '@/hooks/useData';
+import { useContact, useUpdateContact, useAddTimeline, useTeam, useDeleteContact, useCustomFields } from '@/hooks/useData';
 import { useRole } from '@/hooks/useRole';
 import {
   Button, Card, Badge, Modal, Input, Select,
@@ -305,9 +305,20 @@ function AddLogModal({ open, onClose, contactId }) {
   );
 }
 
+// Mongo Maps serialize to plain objects over JSON. Normalize either form.
+function readCustomFields(contact) {
+  const cf = contact?.customFields;
+  if (!cf) return {};
+  if (cf instanceof Map) return Object.fromEntries(cf);
+  return { ...cf };
+}
+
 function EditContactModal({ open, onClose, contact }) {
   const { mutateAsync, isPending } = useUpdateContact();
   const { data: teamData } = useTeam();
+  const { data: customFieldsData } = useCustomFields('contact');
+  const customFields = customFieldsData?.fields || [];
+
   const [form, setForm] = useState({
     firstName: contact.firstName || '', lastName: contact.lastName || '',
     email: contact.email || '', phone: contact.phone || '',
@@ -315,12 +326,22 @@ function EditContactModal({ open, onClose, contact }) {
     status: contact.status || 'lead', notes: contact.notes || '',
     assignedTo: contact.assignedTo?._id || contact.assignedTo || '',
   });
+  const [customValues, setCustomValues] = useState(() => readCustomFields(contact));
+
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const setCustom = (key) => (e) => setCustomValues((v) => ({ ...v, [key]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    for (const f of customFields) {
+      if (f.required && !customValues[f.key]) {
+        toast.error(`${f.label} is required`);
+        return;
+      }
+    }
     const updates = { ...form };
     if (!updates.assignedTo) delete updates.assignedTo;
+    if (customFields.length > 0) updates.customFields = customValues;
     await mutateAsync({ id: contact._id, ...updates });
     onClose();
   };
@@ -353,6 +374,38 @@ function EditContactModal({ open, onClose, contact }) {
           ]}
         />
         <Textarea label="Notes" value={form.notes} onChange={set('notes')} rows={3} />
+
+        {customFields.length > 0 && (
+          <div className="space-y-3 pt-2 border-t border-border">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Additional info</p>
+            {customFields.map((f) => {
+              const label = f.label + (f.required ? ' *' : '');
+              if (f.type === 'select') {
+                return (
+                  <Select
+                    key={f._id}
+                    label={label}
+                    value={customValues[f.key] || ''}
+                    onChange={setCustom(f.key)}
+                    options={[{ value: '', label: 'Select…' }, ...f.options.map((o) => ({ value: o, label: o }))]}
+                    required={f.required}
+                  />
+                );
+              }
+              return (
+                <Input
+                  key={f._id}
+                  label={label}
+                  type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                  value={customValues[f.key] || ''}
+                  onChange={setCustom(f.key)}
+                  required={f.required}
+                />
+              );
+            })}
+          </div>
+        )}
+
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
           <Button type="submit" className="flex-1" loading={isPending}>Save changes</Button>
@@ -362,10 +415,45 @@ function EditContactModal({ open, onClose, contact }) {
   );
 }
 
+// Read-only block that shows custom field values on the contact detail card.
+function CustomFieldsDisplay({ contact, fields }) {
+  const values = readCustomFields(contact);
+  // Only show fields that have a value
+  const populated = fields.filter((f) => values[f.key] != null && values[f.key] !== '');
+  if (populated.length === 0) return null;
+
+  const formatValue = (f, raw) => {
+    if (f.type === 'date') {
+      try { return formatDate(raw); } catch { return raw; }
+    }
+    if (f.type === 'number') {
+      const n = Number(raw);
+      return Number.isFinite(n) ? n.toLocaleString('en-KE') : raw;
+    }
+    return String(raw);
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-border">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Additional info</p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {populated.map((f) => (
+          <div key={f._id}>
+            <p className="text-xs text-muted-foreground">{f.label}</p>
+            <p className="text-sm font-medium mt-0.5 truncate">{formatValue(f, values[f.key])}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ContactDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { data, isLoading } = useContact(id);
+  const { data: customFieldsData } = useCustomFields('contact');
+  const customFieldDefs = customFieldsData?.fields || [];
   const { canWrite } = useRole();
   const { canUse } = usePlan();
   const { mutate: deleteContact } = useDeleteContact();
@@ -449,6 +537,7 @@ export default function ContactDetail() {
             <p className="text-sm text-muted-foreground">{contact.notes}</p>
           </div>
         )}
+        <CustomFieldsDisplay contact={contact} fields={customFieldDefs} />
       </Card>
 
       <div className="flex gap-1 border-b border-border overflow-x-auto">

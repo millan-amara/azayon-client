@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, KanbanSquare, CheckSquare,
-  Zap, Settings, X, Building2,
+  Zap, Settings, X, Building2, Receipt, BarChart3, Crown,
 } from 'lucide-react';
 import { cn, getInitials } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -9,8 +9,11 @@ import { useAuth } from '@/context/AuthContext';
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
   { to: '/contacts', icon: Users, label: 'Contacts' },
+  { to: '/customers', icon: Crown, label: 'Customers' },
   { to: '/pipeline', icon: KanbanSquare, label: 'Pipeline' },
   { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
+  { to: '/documents', icon: Receipt, label: 'Invoices' },
+  { to: '/reports', icon: BarChart3, label: 'Reports' },
   { to: '/automations', icon: Zap, label: 'Automations' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
@@ -65,7 +68,8 @@ export default function Sidebar({ open, onClose }) {
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
-          {NAV.map(({ to, icon: Icon, label, exact }) => {
+          {NAV.map((item) => {
+            const { to, icon: Icon, label, exact } = item;
             const active = exact ? location.pathname === to : location.pathname.startsWith(to);
             return (
               <NavLink

@@ -1,0 +1,48 @@
+{
+  "name": "Azayon CRM",
+  "short_name": "Azayon",
+  "description": "A simple CRM for African small businesses — pipeline, invoices, automations.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#5046e4",
+  "background_color": "#ffffff",
+  "lang": "en",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New invoice",
+      "short_name": "Invoice",
+      "url": "/documents/new?type=invoice",
+      "description": "Create a new invoice"
+    },
+    {
+      "name": "Pipeline",
+      "short_name": "Pipeline",
+      "url": "/pipeline",
+      "description": "View deal pipeline"
+    },
+    {
+      "name": "Tasks",
+      "short_name": "Tasks",
+      "url": "/tasks",
+      "description": "View today's tasks"
+    }
+  ]
+}

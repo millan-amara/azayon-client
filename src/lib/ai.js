@@ -50,7 +50,9 @@ export async function callClaudeStream({ systemPrompt, userPrompt, maxTokens = 1
           fullText += delta;
           onChunk?.(delta, fullText);
         }
-      } catch {}
+      } catch {
+        // Skip malformed SSE chunks — server may emit keepalive lines
+      }
     }
   }
 

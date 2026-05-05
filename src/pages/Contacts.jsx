@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Plus, Upload, Download, MessageCircle, Phone, Mail, Sparkles, Check, X, AlertCircle, Trash2, UserPlus, Tag as TagIcon, Archive } from 'lucide-react';
-import { useContacts, useCreateContact, useDeleteContact, useTeam, useBulkUpdateContacts, useContactTags } from '@/hooks/useData';
+import { useContacts, useCreateContact, useDeleteContact, useTeam, useBulkUpdateContacts, useContactTags, useCustomFields } from '@/hooks/useData';
+import { useQueryClient } from '@tanstack/react-query';
 import { useRole } from '@/hooks/useRole';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Input, Select, Badge, Modal, EmptyState, Spinner, Card } from '@/components/ui';
@@ -39,7 +40,6 @@ function SmartImportModal({ open, onClose, onImported }) {
   const [csvData, setCsvData] = useState(null); // { headers, rows }
   const [mapping, setMapping] = useState({}); // { csvHeader: crmField }
   const [analysing, setAnalysing] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
 
   const handleFile = async (file) => {
@@ -101,7 +101,6 @@ Respond with JSON only: {"CSV Header": "crmField", ...}`,
   };
 
   const handleImport = async () => {
-    setImporting(true);
     setStep('importing');
 
     try {
@@ -119,11 +118,9 @@ Respond with JSON only: {"CSV Header": "crmField", ...}`,
       setImportResult(data);
       setStep('done');
       onImported?.();
-    } catch (err) {
+    } catch {
       toast.error('Import failed — please try again');
       setStep('mapping');
-    } finally {
-      setImporting(false);
     }
   };
 
@@ -276,18 +273,35 @@ Respond with JSON only: {"CSV Header": "crmField", ...}`,
 function CreateContactModal({ open, onClose }) {
   const { mutateAsync, isPending } = useCreateContact();
   const { data: teamData } = useTeam();
+  const { data: customFieldsData } = useCustomFields('contact');
+  const customFields = customFieldsData?.fields || [];
+
   const [form, setForm] = useState({
     firstName: '', lastName: '', email: '', phone: '',
     company: '', jobTitle: '', status: 'lead', assignedTo: '',
   });
+  const [customValues, setCustomValues] = useState({});
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const setCustom = (key) => (e) => setCustomValues((v) => ({ ...v, [key]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await mutateAsync(form);
+    // Validate required custom fields
+    for (const f of customFields) {
+      if (f.required && !customValues[f.key]) {
+        toast.error(`${f.label} is required`);
+        return;
+      }
+    }
+    const payload = { ...form };
+    if (Object.keys(customValues).length > 0) {
+      payload.customFields = customValues;
+    }
+    await mutateAsync(payload);
     onClose();
     setForm({ firstName: '', lastName: '', email: '', phone: '', company: '', jobTitle: '', status: 'lead', assignedTo: '' });
+    setCustomValues({});
   };
 
   return (
@@ -316,6 +330,39 @@ function CreateContactModal({ open, onClose }) {
             ...(teamData?.users || []).map((u) => ({ value: u._id, label: u.name })),
           ]}
         />
+
+        {/* Custom fields */}
+        {customFields.length > 0 && (
+          <div className="space-y-3 pt-2 border-t border-border">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Additional info</p>
+            {customFields.map((f) => {
+              const label = f.label + (f.required ? ' *' : '');
+              if (f.type === 'select') {
+                return (
+                  <Select
+                    key={f._id}
+                    label={label}
+                    value={customValues[f.key] || ''}
+                    onChange={setCustom(f.key)}
+                    options={[{ value: '', label: 'Select…' }, ...f.options.map((o) => ({ value: o, label: o }))]}
+                    required={f.required}
+                  />
+                );
+              }
+              return (
+                <Input
+                  key={f._id}
+                  label={label}
+                  type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                  value={customValues[f.key] || ''}
+                  onChange={setCustom(f.key)}
+                  required={f.required}
+                />
+              );
+            })}
+          </div>
+        )}
+
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
           <Button type="submit" className="flex-1" loading={isPending}>Create contact</Button>
@@ -502,8 +549,9 @@ export default function Contacts() {
   const { data: teamData } = useTeam();
   const { mutate: deleteContact } = useDeleteContact();
   const [deletingContact, setDeletingContact] = useState(null);
-  const { canWrite, role } = useRole();
+  const { canWrite } = useRole();
   const { billing } = usePlan();
+  const queryClient = useQueryClient();
 
   const contacts = data?.contacts || [];
   const pagination = data?.pagination;
@@ -769,7 +817,12 @@ export default function Contacts() {
       <SmartImportModal
         open={showImport}
         onClose={() => setShowImport(false)}
-        onImported={() => { setShowImport(false); window.location.reload(); }}
+        onImported={() => {
+          setShowImport(false);
+          setPage(1);
+          queryClient.invalidateQueries({ queryKey: ['contacts'] });
+          queryClient.invalidateQueries({ queryKey: ['contact-tags'] });
+        }}
       />
 
       {/* Delete confirmation */}

@@ -18,6 +18,11 @@ import DealDetail from '@/pages/DealDetail';
 import Tasks from '@/pages/Tasks';
 import Automations from '@/pages/Automations';
 import Settings from '@/pages/Settings';
+import Documents from '@/pages/Documents';
+import DocumentEditor from '@/pages/DocumentEditor';
+import PublicDocument from '@/pages/PublicDocument';
+import Reports from '@/pages/Reports';
+import Customers from '@/pages/Customers';
 
 function RouteError() {
   const error = useRouteError();
@@ -57,6 +62,7 @@ function AppRoutes() {
       <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
       <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />
+      <Route path="/i/:token" element={<PublicDocument />} />
       <Route path="/" element={
         <ProtectedRoute>
           <SocketProvider>
@@ -71,9 +77,14 @@ function AppRoutes() {
         <Route index element={<Dashboard />} />
         <Route path="contacts" element={<Contacts />} />
         <Route path="contacts/:id" element={<ContactDetail />} errorElement={<RouteError />} />
+        <Route path="customers" element={<Customers />} />
         <Route path="pipeline" element={<Pipeline />} />
         <Route path="deals/:id" element={<DealDetail />} errorElement={<RouteError />} />
         <Route path="tasks" element={<Tasks />} />
+        <Route path="documents" element={<Documents />} />
+        <Route path="documents/new" element={<DocumentEditor />} />
+        <Route path="documents/:id" element={<DocumentEditor />} errorElement={<RouteError />} />
+        <Route path="reports" element={<Reports />} />
         <Route path="automations" element={<Automations />} />
         <Route path="settings" element={<Settings />} />
       </Route>

@@ -30,6 +30,12 @@ export function PlanProvider({ children }) {
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
+  const refetch = useCallback(() => {
+    sessionStorage.removeItem('billingStatus');
+    sessionStorage.removeItem('billingStatusAt');
+    fetchStatus();
+  }, [fetchStatus]);
+
   const isGrowth = billing?.plan === 'growth' && billing?.status === 'active';
   const isTrialing = billing?.isOnTrial;
   const hasFullAccess = isGrowth || isTrialing;
@@ -47,17 +53,14 @@ export function PlanProvider({ children }) {
       isTrialing,
       hasFullAccess,
       canUse,
-      refetch: () => {
-        sessionStorage.removeItem('billingStatus');
-        sessionStorage.removeItem('billingStatusAt');
-        fetchStatus();
-      },
+      refetch,
     }}>
       {children}
     </PlanContext.Provider>
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function usePlan() {
   const ctx = useContext(PlanContext);
   if (!ctx) throw new Error('usePlan must be used within PlanProvider');

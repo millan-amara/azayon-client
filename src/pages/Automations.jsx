@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Zap, Plus, ToggleLeft, ToggleRight, Trash2, Play, Clock,
   ChevronDown, AlertCircle, CheckCircle2, Brain, Search, Rocket, Pencil,
@@ -37,7 +37,7 @@ const ACTION_LABELS = {
 
 // ─── TEMPLATE CARD ────────────────────────────────────────────────────────────
 
-function TemplateCard({ template, activeTemplateIds, activeTriggers, onActivate }) {
+function TemplateCard({ template, activeTemplateIds, onActivate }) {
   const { canWrite } = useRole();
   const isActive = activeTemplateIds?.includes(template.id);
 
@@ -103,27 +103,22 @@ function TemplateCard({ template, activeTemplateIds, activeTriggers, onActivate 
 
 // ─── ACTIVATE TEMPLATE MODAL ──────────────────────────────────────────────────
 
+// Caller passes `key={template?.id || 'none'}` so this remounts with a fresh
+// config/step whenever a different template is chosen.
 function ActivateTemplateModal({ open, onClose, onSuccess, template, hasDuplicate }) {
   const { mutateAsync, isPending } = useCreateAutomation();
   const { data: teamData } = useTeam();
   const { data: pipelinesData } = usePipelines();
   const [step, setStep] = useState(1);
-  const [config, setConfig] = useState({
-    name: '',
+  const [config, setConfig] = useState(() => ({
+    name: template?.name || '',
     webhookUrl: '',
     assignUserId: '',
     pipelineId: '',
     stageId: '',
     triggerStageId: '',
     confirmedDuplicate: false,
-  });
-
-  useEffect(() => {
-    if (template) {
-      setConfig({ name: template.name, webhookUrl: '', assignUserId: '', pipelineId: '', stageId: '', triggerStageId: '', confirmedDuplicate: false });
-      setStep(1);
-    }
-  }, [template?.id]);
+  }));
 
   if (!template) return null;
 
@@ -786,7 +781,7 @@ function EditAutomationModal({ open, onClose, automation }) {
 
 // ─── ADVANCED TEMPLATES ───────────────────────────────────────────────────────
 
-function AdvancedTemplates({ templates, activeTriggers, activeTemplateIds, onActivate }) {
+function AdvancedTemplates({ templates, activeTemplateIds, onActivate }) {
   const [open, setOpen] = useState(false);
   if (templates.length === 0) return null;
   return (
@@ -811,7 +806,7 @@ function AdvancedTemplates({ templates, activeTriggers, activeTemplateIds, onAct
             <p className="text-xs text-blue-700">These require an n8n instance or webhook URL. If you're not sure what that means, skip this for now.</p>
           </div>
           {templates.map((template) => (
-            <TemplateCard key={template.id} template={template} activeTriggers={activeTriggers} activeTemplateIds={activeTemplateIds} onActivate={onActivate} />
+            <TemplateCard key={template.id} template={template} activeTemplateIds={activeTemplateIds} onActivate={onActivate} />
           ))}
         </div>
       )}
@@ -826,7 +821,6 @@ export default function Automations() {
   const { data: templatesData } = useAutomationTemplates();
   const { mutate: toggle } = useToggleAutomation();
   const { mutate: remove } = useDeleteAutomation();
-  const { mutateAsync: updateAutomation } = useUpdateAutomation();
   const { canWrite } = useRole();
   const { canUse } = usePlan();
   const [activeTab, setActiveTab] = useState('my');
@@ -1026,7 +1020,7 @@ export default function Automations() {
                   </div>
                 </div>
                 {categoryTemplates.map((template) => (
-                  <TemplateCard key={template.id} template={template} activeTriggers={activeTriggers} activeTemplateIds={activeTemplateIds} onActivate={setSelectedTemplate} />
+                  <TemplateCard key={template.id} template={template} activeTemplateIds={activeTemplateIds} onActivate={setSelectedTemplate} />
                 ))}
               </div>
             );
@@ -1036,7 +1030,6 @@ export default function Automations() {
           {(selectedCategory === 'all' || selectedCategory === 'advanced') && (
             <AdvancedTemplates
               templates={filteredTemplates.filter((t) => t.category === 'advanced')}
-              activeTriggers={activeTriggers}
               activeTemplateIds={activeTemplateIds}
               onActivate={setSelectedTemplate}
             />
@@ -1045,6 +1038,7 @@ export default function Automations() {
       )}
 
       <ActivateTemplateModal
+        key={selectedTemplate?.id || 'no-template'}
         open={!!selectedTemplate}
         onClose={() => setSelectedTemplate(null)}
         onSuccess={handleActivateSuccess}

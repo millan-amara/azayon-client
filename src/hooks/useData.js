@@ -290,6 +290,26 @@ export function useDeletePipeline() {
   });
 }
 
+// ─── CUSTOMERS ───────────────────────────────────────────────────────────────
+
+export function useCustomers(params = {}) {
+  return useQuery({
+    queryKey: ['customers', params],
+    queryFn: () => api.get('/customers', { params }).then((r) => r.data),
+    ...STALE_5MIN,
+  });
+}
+
+// ─── REPORTS ─────────────────────────────────────────────────────────────────
+
+export function useReports({ from, to } = {}) {
+  return useQuery({
+    queryKey: ['reports', from, to],
+    queryFn: () => api.get('/reports', { params: { from, to } }).then((r) => r.data),
+    ...STALE_5MIN,
+  });
+}
+
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 
 export function useDashboard() {
@@ -393,6 +413,203 @@ export function useMarkNotificationRead() {
   });
 }
 
+// ─── CUSTOM FIELDS ───────────────────────────────────────────────────────────
+
+export function useCustomFields(entity) {
+  return useQuery({
+    queryKey: ['custom-fields', entity || 'all'],
+    queryFn: () => api.get('/custom-fields', { params: entity ? { entity } : {} }).then((r) => r.data),
+    ...STALE_5MIN,
+  });
+}
+
+export function useCreateCustomField() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => api.post('/custom-fields', data).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['custom-fields'] });
+      toast.success('Field added');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to add field'),
+  });
+}
+
+export function useUpdateCustomField() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.put(`/custom-fields/${id}`, data).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['custom-fields'] });
+      toast.success('Field updated');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to update field'),
+  });
+}
+
+export function useDeleteCustomField() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.delete(`/custom-fields/${id}`).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['custom-fields'] });
+      toast.success('Field removed');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to remove field'),
+  });
+}
+
+// ─── EMAIL TEMPLATES ─────────────────────────────────────────────────────────
+
+export function useEmailTemplates(category) {
+  return useQuery({
+    queryKey: ['email-templates', category || 'all'],
+    queryFn: () => api.get('/email-templates', { params: category ? { category } : {} }).then((r) => r.data),
+    ...STALE_5MIN,
+  });
+}
+
+export function useCreateEmailTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => api.post('/email-templates', data).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['email-templates'] });
+      toast.success('Template saved');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to save template'),
+  });
+}
+
+export function useUpdateEmailTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.put(`/email-templates/${id}`, data).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['email-templates'] });
+      toast.success('Template updated');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to update'),
+  });
+}
+
+export function useDeleteEmailTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.delete(`/email-templates/${id}`).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['email-templates'] });
+      toast.success('Template deleted');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to delete'),
+  });
+}
+
+// ─── DOCUMENTS (quotes & invoices) ───────────────────────────────────────────
+
+export function useDocuments(params = {}) {
+  return useQuery({
+    queryKey: ['documents', params],
+    queryFn: () => api.get('/documents', { params }).then((r) => r.data),
+    ...STALE_1MIN,
+  });
+}
+
+export function useDocument(id) {
+  return useQuery({
+    queryKey: ['document', id],
+    queryFn: () => api.get(`/documents/${id}`).then((r) => r.data),
+    enabled: !!id,
+    ...STALE_1MIN,
+  });
+}
+
+export function useCreateDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => api.post('/documents', data).then((r) => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['documents'] });
+      toast.success(`${data?.document?.type === 'quote' ? 'Quote' : 'Invoice'} ${data?.document?.number} created`);
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to create document'),
+  });
+}
+
+export function useUpdateDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.put(`/documents/${id}`, data).then((r) => r.data),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['documents'] });
+      qc.invalidateQueries({ queryKey: ['document', id] });
+      toast.success('Saved');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to save'),
+  });
+}
+
+export function useDeleteDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.delete(`/documents/${id}`).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['documents'] });
+      toast.success('Deleted');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to delete'),
+  });
+}
+
+export function useSendDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.post(`/documents/${id}/send`, data).then((r) => r.data),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['documents'] });
+      qc.invalidateQueries({ queryKey: ['document', id] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to send'),
+  });
+}
+
+export function useMarkDocumentPaid() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }) => api.post(`/documents/${id}/paid`, data).then((r) => r.data),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['documents'] });
+      qc.invalidateQueries({ queryKey: ['document', id] });
+      toast.success('Marked as paid');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to mark paid'),
+  });
+}
+
+export function useAcceptQuote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.post(`/documents/${id}/accept`).then((r) => r.data),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: ['documents'] });
+      qc.invalidateQueries({ queryKey: ['document', id] });
+      toast.success('Quote accepted');
+    },
+  });
+}
+
+export function useDeclineQuote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }) => api.post(`/documents/${id}/decline`, { reason }).then((r) => r.data),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['documents'] });
+      qc.invalidateQueries({ queryKey: ['document', id] });
+      toast.success('Quote declined');
+    },
+  });
+}
+
 // ─── GLOBAL SEARCH ───────────────────────────────────────────────────────────
 
 export function useGlobalSearch(q) {
@@ -416,6 +633,12 @@ export function useUpdateOrg() {
       toast.success('Organisation settings saved');
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Failed to update organisation'),
+  });
+}
+
+export function useUpdateOnboarding() {
+  return useMutation({
+    mutationFn: (data) => api.put('/orgs/me/onboarding', data).then((r) => r.data),
   });
 }
 

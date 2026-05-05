@@ -164,7 +164,8 @@ export default function SearchModal({ open, onClose }) {
             </div>
           )}
 
-          {hasQuery && items.length > 0 && groups.map(({ key, label, Icon, items: groupItems }) => {
+          {hasQuery && items.length > 0 && groups.map((group) => {
+            const { key, label, Icon, items: groupItems } = group;
             if (groupItems.length === 0) return null;
             return (
               <div key={key} className="py-1">

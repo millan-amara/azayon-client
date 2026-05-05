@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Plus, MessageCircle, MoreVertical, Trophy, XCircle, Filter, Download, Search, X, SlidersHorizontal } from 'lucide-react';
-import { useKanban, usePipelines, useUpdateDeal, useCreateDeal, useMarkDealWon, useMarkDealLost, useContacts, useTeam } from '@/hooks/useData';
+import { useKanban, usePipelines, useUpdateDeal, useCreateDeal, useMarkDealWon, useMarkDealLost, useContacts, useTeam, useCustomFields } from '@/hooks/useData';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRole } from '@/hooks/useRole';
 import { useAuth } from '@/context/AuthContext';
@@ -103,12 +103,16 @@ function CreateDealModal({ open, onClose, pipeline }) {
   const { mutateAsync, isPending } = useCreateDeal();
   const { data: contactsData } = useContacts({ limit: 100 });
   const { data: teamData } = useTeam();
+  const { data: customFieldsData } = useCustomFields('deal');
+  const customFields = customFieldsData?.fields || [];
   const [form, setForm] = useState({
     title: '', value: '', contactId: '', stageId: '', assignedTo: '',
     expectedCloseDate: '', notes: '',
   });
+  const [customValues, setCustomValues] = useState({});
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const setCustom = (key) => (e) => setCustomValues((v) => ({ ...v, [key]: e.target.value }));
 
   const openStages = pipeline?.stages?.filter((s) => !s.isWon && !s.isLost) || [];
 
@@ -116,9 +120,17 @@ function CreateDealModal({ open, onClose, pipeline }) {
     e.preventDefault();
     if (!form.contactId) return toast.error('Please select a contact');
     if (!form.stageId) return toast.error('Please select a stage');
-    await mutateAsync({ ...form, pipelineId: pipeline._id, value: parseFloat(form.value) || 0 });
+    for (const f of customFields) {
+      if (f.required && !customValues[f.key]) {
+        return toast.error(`${f.label} is required`);
+      }
+    }
+    const payload = { ...form, pipelineId: pipeline._id, value: parseFloat(form.value) || 0 };
+    if (customFields.length > 0) payload.customFields = customValues;
+    await mutateAsync(payload);
     onClose();
     setForm({ title: '', value: '', contactId: '', stageId: '', assignedTo: '', expectedCloseDate: '', notes: '' });
+    setCustomValues({});
   };
 
   return (
@@ -162,6 +174,38 @@ function CreateDealModal({ open, onClose, pipeline }) {
           />
         </div>
         <Textarea label="Notes" value={form.notes} onChange={set('notes')} rows={2} />
+
+        {customFields.length > 0 && (
+          <div className="space-y-3 pt-2 border-t border-border">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Additional info</p>
+            {customFields.map((f) => {
+              const label = f.label + (f.required ? ' *' : '');
+              if (f.type === 'select') {
+                return (
+                  <Select
+                    key={f._id}
+                    label={label}
+                    value={customValues[f.key] || ''}
+                    onChange={setCustom(f.key)}
+                    options={[{ value: '', label: 'Select…' }, ...f.options.map((o) => ({ value: o, label: o }))]}
+                    required={f.required}
+                  />
+                );
+              }
+              return (
+                <Input
+                  key={f._id}
+                  label={label}
+                  type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                  value={customValues[f.key] || ''}
+                  onChange={setCustom(f.key)}
+                  required={f.required}
+                />
+              );
+            })}
+          </div>
+        )}
+
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
           <Button type="submit" className="flex-1" loading={isPending}>Create deal</Button>
@@ -213,7 +257,8 @@ export default function Pipeline() {
   const { mutate: markLost } = useMarkDealLost();
 
   const pipeline = data?.pipeline;
-  const kanban = data?.kanban || [];
+  // Stable reference across renders when data hasn't changed — keeps deps quiet
+  const kanban = useMemo(() => data?.kanban || [], [data]);
   const teamMembers = (teamData?.users || []).filter((u) => u.isActive !== false);
 
   const queryClient = useQueryClient();

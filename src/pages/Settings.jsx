@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Copy, Check, Plus, Eye, EyeOff, MoreVertical, Pencil, Trash2, Clock, X, CreditCard, CheckCircle2, Zap, ArrowRight, GripVertical, ChevronDown, ChevronUp } from 'lucide-react';
+import { Copy, Check, Plus, Eye, EyeOff, MoreVertical, Pencil, Trash2, Clock, X, CreditCard, CheckCircle2, Zap, ArrowRight, GripVertical, ChevronDown, ChevronUp, Smartphone } from 'lucide-react';
+import InstallAppButton from '@/components/InstallAppButton';
 import { useAuth } from '@/context/AuthContext';
-import { useTeam, useInviteUser, useUpdateUser, useRemoveUser, useReactivateUser, usePendingInvites, useCancelInvite, usePipelines, useCreatePipeline, useUpdatePipeline, useDeletePipeline, useUpdateOrg } from '@/hooks/useData';
+import { useTeam, useInviteUser, useUpdateUser, useRemoveUser, useReactivateUser, usePendingInvites, useCancelInvite, usePipelines, useCreatePipeline, useUpdatePipeline, useDeletePipeline, useUpdateOrg, useEmailTemplates, useCreateEmailTemplate, useUpdateEmailTemplate, useDeleteEmailTemplate, useCustomFields, useCreateCustomField, useUpdateCustomField, useDeleteCustomField } from '@/hooks/useData';
 import { Button, Input, Select, Card, Modal, Avatar, Badge } from '@/components/ui';
 import { usePlan } from '@/context/PlanContext';
 import { useUpgrade } from '@/components/Upgrade';
@@ -690,6 +691,23 @@ function GeneralTab({ org, isAdmin }) {
         </div>
       </Card>
 
+      <Card className="p-5">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <Smartphone className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold">Install on your phone</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Add Azayon to your home screen for fast, app-like access. Works on Android Chrome and most mobile browsers.
+              </p>
+            </div>
+          </div>
+          <InstallAppButton />
+        </div>
+      </Card>
+
       <div className="flex justify-end">
         <Button type="submit" loading={isPending}>Save changes</Button>
       </div>
@@ -705,7 +723,7 @@ function BillingTab() {
 
   if (!billing) return <div className="flex justify-center py-8"><div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
 
-  const { plan, status, isOnTrial, trialDaysLeft, subscribedAt } = billing;
+  const { status, isOnTrial, trialDaysLeft, subscribedAt } = billing;
   const isActive = status === 'active' || status === 'cancelling';
   const isCancelling = status === 'cancelling';
   const isPastDue = status === 'past_due';
@@ -940,7 +958,8 @@ function StageRow({ stage, index, total, onChange, onRemove, onMoveUp, onMoveDow
 
 function PipelineEditor({ pipeline, onSave, onCancel, isNew }) {
   const [name, setName] = useState(pipeline?.name || '');
-  const [stages, setStages] = useState(
+  // Lazy init — only runs on first render, so impure Math.random is acceptable here
+  const [stages, setStages] = useState(() => (
     pipeline?.stages?.length
       ? pipeline.stages.map((s) => ({ ...s, _tempId: s._id || Math.random().toString(36) }))
       : [
@@ -950,7 +969,7 @@ function PipelineEditor({ pipeline, onSave, onCancel, isNew }) {
           { _tempId: 'won', name: 'Won', order: 3, color: '#22c55e', probability: 100, isWon: true },
           { _tempId: 'lost', name: 'Lost', order: 4, color: '#ef4444', probability: 0, isLost: true },
         ]
-  );
+  ));
   const [saving, setSaving] = useState(false);
 
   const regularStages = stages.filter((s) => !s.isWon && !s.isLost);
@@ -1003,7 +1022,12 @@ function PipelineEditor({ pipeline, onSave, onCancel, isNew }) {
       ...regularStages.map((s, i) => ({ ...s, order: i })),
       ...(wonStage ? [{ ...wonStage, order: regularStages.length }] : []),
       ...(lostStage ? [{ ...lostStage, order: regularStages.length + 1 }] : []),
-    ].map(({ _tempId, ...rest }) => rest); // strip temp IDs
+    ].map((s) => {
+      // strip the client-only _tempId before sending to API
+      const stage = { ...s };
+      delete stage._tempId;
+      return stage;
+    });
 
     setSaving(true);
     await onSave({ name: name.trim(), stages: orderedStages });
@@ -1094,7 +1118,6 @@ function PipelinesTab() {
   const [deletingId, setDeletingId] = useState(null);
 
   const pipelines = pipelinesData?.pipelines || [];
-  const editingPipeline = pipelines.find((p) => p._id === editingId);
 
   return (
     <div className="space-y-4">
@@ -1226,10 +1249,402 @@ function PipelinesTab() {
   );
 }
 
+// ─── EMAIL TEMPLATES TAB ──────────────────────────────────────────────────────
+
+const TEMPLATE_CATEGORIES = [
+  { value: 'invoice',    label: 'Invoice' },
+  { value: 'quote',      label: 'Quote' },
+  { value: 'follow_up',  label: 'Follow-up' },
+  { value: 'thank_you',  label: 'Thank you' },
+  { value: 'general',    label: 'General' },
+];
+
+const PLACEHOLDER_HINTS = [
+  '{{customerName}}', '{{businessName}}', '{{number}}',
+  '{{total}}', '{{dueDate}}', '{{publicUrl}}',
+];
+
+function TemplateEditor({ template, onCancel, onSaved }) {
+  const isNew = !template?._id;
+  const { mutateAsync: create } = useCreateEmailTemplate();
+  const { mutateAsync: update } = useUpdateEmailTemplate();
+  const [form, setForm] = useState({
+    name:     template?.name     || '',
+    category: template?.category || 'general',
+    subject:  template?.subject  || '',
+    body:     template?.body     || '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const insertPlaceholder = (field, ph) => {
+    setForm((f) => ({ ...f, [field]: (f[field] || '') + ph }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) return toast.error('Template needs a name');
+    if (!form.body.trim()) return toast.error('Template body is required');
+    setSaving(true);
+    try {
+      if (isNew) await create(form);
+      else await update({ id: template._id, ...form });
+      onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="p-5">
+      <h4 className="text-sm font-semibold mb-4">{isNew ? 'New template' : `Edit: ${template.name}`}</h4>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Input
+            label="Name"
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="e.g. Friendly invoice reminder"
+            required
+          />
+          <Select
+            label="Category"
+            value={form.category}
+            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+            options={TEMPLATE_CATEGORIES}
+          />
+        </div>
+        <Input
+          label="Subject"
+          value={form.subject}
+          onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
+          placeholder="e.g. Reminder: Invoice {{number}} from {{businessName}}"
+        />
+        <div className="space-y-1.5">
+          <label className="block text-sm font-medium">Body</label>
+          <textarea
+            value={form.body}
+            onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
+            rows={6}
+            placeholder="Hi {{customerName}}, …"
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <span className="text-xs text-muted-foreground self-center mr-1">Insert:</span>
+          {PLACEHOLDER_HINTS.map((ph) => (
+            <button
+              key={ph}
+              type="button"
+              onClick={() => insertPlaceholder('body', ph)}
+              className="text-[11px] font-mono px-2 py-0.5 rounded-md border border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+            >
+              {ph}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-3 pt-2 border-t border-border">
+          <Button type="button" variant="outline" className="flex-1" onClick={onCancel}>Cancel</Button>
+          <Button type="submit" className="flex-1" loading={saving}>{isNew ? 'Create template' : 'Save changes'}</Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
+function EmailTemplatesTab() {
+  const { data } = useEmailTemplates();
+  const { mutate: del } = useDeleteEmailTemplate();
+  const [editing, setEditing] = useState(null); // null | 'new' | template
+  const [deletingId, setDeletingId] = useState(null);
+  const templates = data?.templates || [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold">Email templates</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Reusable subject + body for invoices, quotes and follow-ups</p>
+        </div>
+        {!editing && (
+          <Button size="sm" onClick={() => setEditing('new')}>
+            <Plus className="w-4 h-4" /> New template
+          </Button>
+        )}
+      </div>
+
+      {editing && (
+        <TemplateEditor
+          template={editing === 'new' ? null : editing}
+          onCancel={() => setEditing(null)}
+          onSaved={() => setEditing(null)}
+        />
+      )}
+
+      {!editing && templates.length === 0 && (
+        <Card className="p-8 text-center">
+          <p className="text-sm text-muted-foreground">No templates yet — create your first one to speed up sending.</p>
+        </Card>
+      )}
+
+      {!editing && templates.map((t) => (
+        <Card key={t._id} className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-sm font-semibold">{t.name}</p>
+                <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground capitalize">
+                  {t.category.replace('_', ' ')}
+                </span>
+              </div>
+              {t.subject && <p className="text-xs text-muted-foreground mt-1 truncate">Subject: {t.subject}</p>}
+              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 whitespace-pre-wrap">{t.body}</p>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button size="sm" variant="outline" onClick={() => setEditing(t)}>
+                <Pencil className="w-3.5 h-3.5" />
+              </Button>
+              <Button size="sm" variant="outline" className="text-red-500 hover:bg-red-50 hover:border-red-200" onClick={() => setDeletingId(t._id)}>
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ))}
+
+      <Modal open={!!deletingId} onClose={() => setDeletingId(null)} title="Delete template?">
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">This template will be removed. Sent emails are unaffected.</p>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setDeletingId(null)}>Cancel</Button>
+            <Button
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white border-0"
+              onClick={() => { del(deletingId); setDeletingId(null); }}
+            >
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ─── CUSTOM FIELDS TAB ────────────────────────────────────────────────────────
+
+const FIELD_TYPES = [
+  { value: 'text',   label: 'Text' },
+  { value: 'number', label: 'Number' },
+  { value: 'date',   label: 'Date' },
+  { value: 'select', label: 'Select (dropdown)' },
+];
+
+function CustomFieldEditor({ field, onCancel, onSaved, isAdmin }) {
+  const isNew = !field?._id;
+  const { mutateAsync: create } = useCreateCustomField();
+  const { mutateAsync: update } = useUpdateCustomField();
+  const [form, setForm] = useState({
+    entity:   field?.entity   || 'contact',
+    label:    field?.label    || '',
+    type:     field?.type     || 'text',
+    options:  (field?.options || []).join(', '),
+    required: field?.required || false,
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!isAdmin) return toast.error('Only admins can edit custom fields');
+    if (!form.label.trim()) return toast.error('Label is required');
+
+    const payload = {
+      entity: form.entity,
+      label: form.label.trim(),
+      type: form.type,
+      required: form.required,
+      options: form.type === 'select'
+        ? form.options.split(',').map((s) => s.trim()).filter(Boolean)
+        : [],
+    };
+
+    if (form.type === 'select' && payload.options.length === 0) {
+      return toast.error('Add at least one option for a select field');
+    }
+
+    setSaving(true);
+    try {
+      if (isNew) await create(payload);
+      else await update({ id: field._id, label: payload.label, type: payload.type, options: payload.options, required: payload.required });
+      onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="p-5">
+      <h4 className="text-sm font-semibold mb-4">{isNew ? 'New custom field' : `Edit: ${field.label}`}</h4>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Select
+            label="Applies to"
+            value={form.entity}
+            onChange={(e) => setForm((f) => ({ ...f, entity: e.target.value }))}
+            options={[
+              { value: 'contact', label: 'Contact' },
+              { value: 'deal', label: 'Deal' },
+            ]}
+            disabled={!isNew}
+          />
+          <Select
+            label="Field type"
+            value={form.type}
+            onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
+            options={FIELD_TYPES}
+          />
+        </div>
+        <Input
+          label="Field label"
+          value={form.label}
+          onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
+          placeholder="e.g. Lead source, Industry, Birthday"
+          required
+        />
+        {form.type === 'select' && (
+          <Input
+            label="Options (comma-separated)"
+            value={form.options}
+            onChange={(e) => setForm((f) => ({ ...f, options: e.target.value }))}
+            placeholder="e.g. WhatsApp, Referral, Website"
+          />
+        )}
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.required}
+            onChange={(e) => setForm((f) => ({ ...f, required: e.target.checked }))}
+            className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+          />
+          <span className="text-sm">Required when creating a {form.entity}</span>
+        </label>
+        <div className="flex gap-3 pt-2 border-t border-border">
+          <Button type="button" variant="outline" className="flex-1" onClick={onCancel}>Cancel</Button>
+          <Button type="submit" className="flex-1" loading={saving}>{isNew ? 'Add field' : 'Save changes'}</Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
+function CustomFieldsTab({ isAdmin }) {
+  const { data } = useCustomFields();
+  const { mutate: del } = useDeleteCustomField();
+  const [editing, setEditing] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+
+  const fields = data?.fields || [];
+  const contactCount = fields.filter((f) => f.entity === 'contact').length;
+  const dealCount    = fields.filter((f) => f.entity === 'deal').length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold">Custom fields</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Add fields specific to your business · {contactCount}/5 on contacts · {dealCount}/5 on deals
+          </p>
+        </div>
+        {isAdmin && !editing && (
+          <Button size="sm" onClick={() => setEditing('new')}>
+            <Plus className="w-4 h-4" /> New field
+          </Button>
+        )}
+      </div>
+
+      {editing && (
+        <CustomFieldEditor
+          field={editing === 'new' ? null : editing}
+          onCancel={() => setEditing(null)}
+          onSaved={() => setEditing(null)}
+          isAdmin={isAdmin}
+        />
+      )}
+
+      {!editing && fields.length === 0 && (
+        <Card className="p-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            {isAdmin ? 'No custom fields yet — add one to capture business-specific info.' : 'No custom fields defined.'}
+          </p>
+        </Card>
+      )}
+
+      {!editing && ['contact', 'deal'].map((entity) => {
+        const list = fields.filter((f) => f.entity === entity);
+        if (list.length === 0) return null;
+        return (
+          <div key={entity} className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1">
+              {entity === 'contact' ? 'Contacts' : 'Deals'} ({list.length}/5)
+            </p>
+            {list.map((f) => (
+              <Card key={f._id} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold">{f.label}</p>
+                      <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground capitalize">
+                        {f.type}
+                      </span>
+                      {f.required && (
+                        <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Required</span>
+                      )}
+                    </div>
+                    {f.type === 'select' && f.options.length > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">Options: {f.options.join(', ')}</p>
+                    )}
+                    <p className="text-[11px] font-mono text-muted-foreground mt-0.5">key: {f.key}</p>
+                  </div>
+                  {isAdmin && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button size="sm" variant="outline" onClick={() => setEditing(f)}>
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="sm" variant="outline" className="text-red-500 hover:bg-red-50 hover:border-red-200" onClick={() => setDeletingId(f._id)}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+        );
+      })}
+
+      <Modal open={!!deletingId} onClose={() => setDeletingId(null)} title="Remove this field?">
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            New {fields.find((f) => f._id === deletingId)?.entity || 'records'} won't show this field. Existing records keep the value but it won't display in the form.
+          </p>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setDeletingId(null)}>Cancel</Button>
+            <Button
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white border-0"
+              onClick={() => { del(deletingId); setDeletingId(null); }}
+            >
+              Remove field
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 export default function Settings() {
   const { user, org, updateUser } = useAuth();
   const { data: teamData } = useTeam();
-  const { billing, refetch } = usePlan();
+  const { refetch } = usePlan();
   const [showInvite, setShowInvite] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: user?.name || '', phone: user?.phone || '' });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
@@ -1251,7 +1666,7 @@ export default function Settings() {
       sessionStorage.removeItem('billingStatusAt');
       refetch();
     }
-  }, []);
+  }, [refetch]);
 
   const saveProfile = async (e) => {
     e.preventDefault();
@@ -1286,6 +1701,8 @@ export default function Settings() {
     { id: 'general', label: 'General' },
     ...(user?.role === 'admin' ? [{ id: 'billing', label: 'Billing' }] : []),
     ...(user?.role === 'admin' ? [{ id: 'pipelines', label: 'Pipelines' }] : []),
+    { id: 'templates', label: 'Email templates' },
+    { id: 'fields', label: 'Custom fields' },
     { id: 'api', label: 'API & n8n' },
     ...(user?.role === 'admin' ? [{ id: 'team', label: 'Team' }] : []),
     { id: 'profile', label: 'Profile' },
@@ -1311,6 +1728,10 @@ export default function Settings() {
       {activeTab === 'billing' && <BillingTab />}
 
       {activeTab === 'pipelines' && <PipelinesTab />}
+
+      {activeTab === 'templates' && <EmailTemplatesTab />}
+
+      {activeTab === 'fields' && <CustomFieldsTab isAdmin={user?.role === 'admin'} />}
 
       {activeTab === 'general' && org && (
         <GeneralTab org={org} isAdmin={user?.role === 'admin'} />

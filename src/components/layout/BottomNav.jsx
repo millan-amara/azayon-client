@@ -16,7 +16,8 @@ export default function BottomNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-20 lg:hidden bg-card border-t border-border">
       <div className="flex items-center justify-around h-16 px-2">
-        {NAV.map(({ to, icon: Icon, label, exact }) => {
+        {NAV.map((item) => {
+          const { to, icon: Icon, label, exact } = item;
           const active = exact ? location.pathname === to : location.pathname.startsWith(to);
           return (
             <NavLink

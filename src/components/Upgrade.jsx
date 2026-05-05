@@ -95,6 +95,7 @@ export function UpgradeProvider({ children }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useUpgrade() {
   const ctx = useContext(UpgradeContext);
   if (!ctx) throw new Error('useUpgrade must be used inside UpgradeProvider');
@@ -104,7 +105,6 @@ export function useUpgrade() {
 // ─── UPGRADE MODAL ────────────────────────────────────────────────────────────
 
 function UpgradeModal({ open, feature, onClose }) {
-  const { billing, refetch } = usePlan();
   const [loading, setLoading] = useState(null); // which price key is loading
   const copy = FEATURE_COPY[feature] || FEATURE_COPY.automations;
 
@@ -112,8 +112,8 @@ function UpgradeModal({ open, feature, onClose }) {
     setLoading(priceKey);
     try {
       const { data } = await api.post('/billing/initialize', { priceKey });
-      window.location.href = data.authorizationUrl;
-    } catch (err) {
+      window.location.assign(data.authorizationUrl);
+    } catch {
       toast.error('Could not start checkout — please try again');
       setLoading(null);
     }

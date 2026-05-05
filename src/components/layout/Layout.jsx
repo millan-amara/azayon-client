@@ -5,17 +5,23 @@ import Navbar from './Navbar';
 import BottomNav from './BottomNav';
 import { useRole } from '@/hooks/useRole';
 import { useAuth } from '@/context/AuthContext';
-import { X } from 'lucide-react';
+import { X, Smartphone } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { TrialBanner, PlanStatusBanner } from '@/components/PlanBanners';
 import SearchModal from '@/components/SearchModal';
+import OnboardingWizard from '@/components/OnboardingWizard';
+import { useRealtimeSync } from '@/hooks/useRealtimeSync';
+import { onInstallAvailableChange, triggerInstall } from '@/lib/pwa';
 
 const PAGE_TITLES = {
   '/': 'Dashboard',
   '/contacts': 'Contacts',
+  '/customers': 'Customers',
   '/pipeline': 'Pipeline',
   '/tasks': 'Tasks',
+  '/documents': 'Invoices & Quotes',
+  '/reports': 'Reports',
   '/automations': 'Automations',
   '/settings': 'Settings',
 };
@@ -23,7 +29,44 @@ const PAGE_TITLES = {
 function getTitle(pathname) {
   if (pathname.startsWith('/contacts/')) return 'Contact Detail';
   if (pathname.startsWith('/deals/')) return 'Deal Detail';
+  if (pathname === '/documents/new' || pathname.startsWith('/documents/')) return 'Document';
   return PAGE_TITLES[pathname] || 'Azayon';
+}
+
+function InstallBanner() {
+  const [available, setAvailable] = useState(false);
+  const [dismissed, setDismissed] = useState(() =>
+    typeof window !== 'undefined' && localStorage.getItem('installBannerDismissed') === '1'
+  );
+
+  useEffect(() => onInstallAvailableChange(setAvailable), []);
+
+  if (!available || dismissed) return null;
+
+  const dismiss = () => {
+    setDismissed(true);
+    localStorage.setItem('installBannerDismissed', '1');
+  };
+
+  return (
+    <div
+      className="flex items-center justify-between gap-4 px-4 py-2 shrink-0"
+      style={{ backgroundColor: 'hsl(243 75% 97%)', borderBottom: '1px solid hsl(243 75% 88%)' }}
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <Smartphone className="w-3.5 h-3.5 text-primary shrink-0" />
+        <p className="text-xs text-primary truncate">
+          Install Azayon on your phone for one-tap access.{' '}
+          <button onClick={triggerInstall} className="font-semibold underline underline-offset-2 hover:opacity-70 transition-opacity">
+            Install now
+          </button>
+        </p>
+      </div>
+      <button onClick={dismiss} className="shrink-0 p-1 rounded hover:bg-primary/10 transition-colors">
+        <X className="w-3.5 h-3.5 text-primary" />
+      </button>
+    </div>
+  );
 }
 
 function VerifyEmailBanner() {
@@ -74,8 +117,21 @@ export default function Layout() {
   const location = useLocation();
   const title = getTitle(location.pathname);
   const { isViewer } = useRole();
+  const { org } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+
+  // Show onboarding wizard automatically for new orgs (admin only — sales reps
+  // shouldn't be hit with setup tasks). Once completed or skipped, the org's
+  // onboarding flag flips and the wizard stops appearing.
+  const onboarding = org?.onboarding;
+  const showOnboarding =
+    !!org &&
+    !onboarding?.completed &&
+    !onboarding?.skipped;
+
+  // Subscribe this session to realtime events from teammates
+  useRealtimeSync();
 
   // Cmd+K (mac) / Ctrl+K (win) opens global search.
   // Also support "/" as a shortcut when not typing in an input.
@@ -114,6 +170,7 @@ export default function Layout() {
         <TrialBanner />
         <PlanStatusBanner />
         <VerifyEmailBanner />
+        <InstallBanner />
         {isViewer && (
           <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2 shrink-0">
             <span className="text-xs font-medium text-amber-700">
@@ -130,6 +187,7 @@ export default function Layout() {
       </div>
       <BottomNav />
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <OnboardingWizard open={showOnboarding} onClose={() => { /* org refresh closes it */ }} />
     </div>
   );
 }

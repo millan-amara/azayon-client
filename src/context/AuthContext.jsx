@@ -50,11 +50,13 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     try {
       await api.post('/auth/logout');
-    } catch {}
+    } catch {
+      // Logout is fire-and-forget — clear local state even if the server call fails
+    }
     localStorage.removeItem('accessToken');
     setUser(null);
     setOrg(null);
-    window.location.href = '/login';
+    window.location.assign('/login');
   };
 
   const updateUser = (updates) => setUser((prev) => ({ ...prev, ...updates }));
@@ -67,6 +69,7 @@ export function AuthProvider({ children }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');

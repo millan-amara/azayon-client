@@ -4,7 +4,7 @@ import {
   ArrowLeft, MessageCircle, ExternalLink, Sparkles,
   RefreshCw, X, Paperclip, Trophy, XCircle, Edit2, Trash2,
 } from 'lucide-react';
-import { useDeal, useMarkDealWon, useMarkDealLost, useUpdateDeal, useTeam, useDeleteDeal } from '@/hooks/useData';
+import { useDeal, useMarkDealWon, useMarkDealLost, useUpdateDeal, useTeam, useDeleteDeal, useCustomFields } from '@/hooks/useData';
 import { useRole } from '@/hooks/useRole';
 import { Button, Card, Modal, Input, Select, Textarea, Spinner } from '@/components/ui';
 import { Attachments } from '@/components/Attachments';
@@ -94,9 +94,19 @@ Give a sharp 3-4 sentence deal assessment: health of the deal, biggest risk, and
 
 // ─── EDIT DEAL MODAL ──────────────────────────────────────────────────────────
 
+// Mongo Maps serialize as plain objects on the wire — normalize either form.
+function readCustomFields(deal) {
+  const cf = deal?.customFields;
+  if (!cf) return {};
+  if (cf instanceof Map) return Object.fromEntries(cf);
+  return { ...cf };
+}
+
 function EditDealModal({ open, onClose, deal }) {
   const { mutateAsync, isPending } = useUpdateDeal();
   const { data: teamData } = useTeam();
+  const { data: customFieldsData } = useCustomFields('deal');
+  const customFields = customFieldsData?.fields || [];
   const [form, setForm] = useState({
     title: deal.title || '',
     value: deal.value || '',
@@ -104,12 +114,21 @@ function EditDealModal({ open, onClose, deal }) {
     notes: deal.notes || '',
     assignedTo: deal.assignedTo?._id || '',
   });
+  const [customValues, setCustomValues] = useState(() => readCustomFields(deal));
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const setCustom = (key) => (e) => setCustomValues((v) => ({ ...v, [key]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    for (const f of customFields) {
+      if (f.required && !customValues[f.key]) {
+        toast.error(`${f.label} is required`);
+        return;
+      }
+    }
     const updates = { ...form, value: parseFloat(form.value) || 0 };
     if (!updates.assignedTo) delete updates.assignedTo;
+    if (customFields.length > 0) updates.customFields = customValues;
     await mutateAsync({ id: deal._id, ...updates });
     onClose();
     toast.success('Deal updated');
@@ -136,6 +155,38 @@ function EditDealModal({ open, onClose, deal }) {
           ]}
         />
         <Textarea label="Notes" value={form.notes} onChange={set('notes')} rows={3} />
+
+        {customFields.length > 0 && (
+          <div className="space-y-3 pt-2 border-t border-border">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Additional info</p>
+            {customFields.map((f) => {
+              const label = f.label + (f.required ? ' *' : '');
+              if (f.type === 'select') {
+                return (
+                  <Select
+                    key={f._id}
+                    label={label}
+                    value={customValues[f.key] || ''}
+                    onChange={setCustom(f.key)}
+                    options={[{ value: '', label: 'Select…' }, ...f.options.map((o) => ({ value: o, label: o }))]}
+                    required={f.required}
+                  />
+                );
+              }
+              return (
+                <Input
+                  key={f._id}
+                  label={label}
+                  type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                  value={customValues[f.key] || ''}
+                  onChange={setCustom(f.key)}
+                  required={f.required}
+                />
+              );
+            })}
+          </div>
+        )}
+
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
           <Button type="submit" className="flex-1" loading={isPending}>Save changes</Button>
@@ -145,12 +196,44 @@ function EditDealModal({ open, onClose, deal }) {
   );
 }
 
+// Read-only block that shows custom field values on the deal detail card.
+function DealCustomFieldsDisplay({ deal, fields }) {
+  const values = readCustomFields(deal);
+  const populated = fields.filter((f) => values[f.key] != null && values[f.key] !== '');
+  if (populated.length === 0) return null;
+
+  const formatValue = (f, raw) => {
+    if (f.type === 'date')   { try { return formatDate(raw); } catch { return raw; } }
+    if (f.type === 'number') {
+      const n = Number(raw);
+      return Number.isFinite(n) ? n.toLocaleString('en-KE') : raw;
+    }
+    return String(raw);
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-border">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Additional info</p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {populated.map((f) => (
+          <div key={f._id}>
+            <p className="text-xs text-muted-foreground">{f.label}</p>
+            <p className="text-sm font-medium mt-0.5 truncate">{formatValue(f, values[f.key])}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export default function DealDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { data, isLoading } = useDeal(id);
+  const { data: customFieldsData } = useCustomFields('deal');
+  const customFieldDefs = customFieldsData?.fields || [];
   const { mutate: markWon } = useMarkDealWon();
   const { mutate: markLost } = useMarkDealLost();
   const { mutate: deleteDeal } = useDeleteDeal();
@@ -272,6 +355,8 @@ export default function DealDetail() {
             <p className="text-sm text-muted-foreground">{deal.lostReason}</p>
           </div>
         )}
+
+        <DealCustomFieldsDisplay deal={deal} fields={customFieldDefs} />
 
         {/* AI Assessment */}
         <div className="mt-5 pt-4 border-t border-border">
