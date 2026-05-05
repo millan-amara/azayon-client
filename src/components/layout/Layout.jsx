@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
@@ -9,6 +9,7 @@ import { X } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { TrialBanner, PlanStatusBanner } from '@/components/PlanBanners';
+import SearchModal from '@/components/SearchModal';
 
 const PAGE_TITLES = {
   '/': 'Dashboard',
@@ -74,6 +75,25 @@ export default function Layout() {
   const title = getTitle(location.pathname);
   const { isViewer } = useRole();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Cmd+K (mac) / Ctrl+K (win) opens global search.
+  // Also support "/" as a shortcut when not typing in an input.
+  useEffect(() => {
+    const onKey = (e) => {
+      const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k';
+      const isSlash =
+        e.key === '/' &&
+        !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) &&
+        !document.activeElement?.isContentEditable;
+      if (isCmdK || isSlash) {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const openSidebar = () => {
     setSidebarOpen(true);
@@ -90,7 +110,7 @@ export default function Layout() {
       <Sidebar open={sidebarOpen} onClose={closeSidebar} />
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <Navbar title={title} onMenuClick={openSidebar} />
+        <Navbar title={title} onMenuClick={openSidebar} onSearchClick={() => setSearchOpen(true)} />
         <TrialBanner />
         <PlanStatusBanner />
         <VerifyEmailBanner />
@@ -109,6 +129,7 @@ export default function Layout() {
         </main>
       </div>
       <BottomNav />
+      <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );
 }

@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { Plus, MessageCircle, MoreVertical, Trophy, XCircle, Filter } from 'lucide-react';
+import { Plus, MessageCircle, MoreVertical, Trophy, XCircle, Filter, Download, Search, X, SlidersHorizontal } from 'lucide-react';
 import { useKanban, usePipelines, useUpdateDeal, useCreateDeal, useMarkDealWon, useMarkDealLost, useContacts, useTeam } from '@/hooks/useData';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRole } from '@/hooks/useRole';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Modal, Input, Select, Textarea, Spinner, EmptyState, Card } from '@/components/ui';
 import { formatCurrency, getWhatsAppUrl, cn } from '@/lib/utils';
+import { downloadFile } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -170,6 +171,21 @@ function CreateDealModal({ open, onClose, pipeline }) {
   );
 }
 
+function FilterChip({ label, onRemove }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium">
+      {label}
+      <button
+        onClick={onRemove}
+        className="hover:bg-primary/20 rounded-full p-0.5 transition-colors"
+        aria-label={`Remove filter ${label}`}
+      >
+        <X className="w-3 h-3" />
+      </button>
+    </span>
+  );
+}
+
 export default function Pipeline() {
   const { data: pipelinesData, isLoading: loadingPipelines } = usePipelines();
   const { data: teamData } = useTeam();
@@ -181,6 +197,12 @@ export default function Pipeline() {
   // Sales reps default to seeing their own deals
   const defaultFilter = role === 'sales_rep' ? user?._id || '' : '';
   const [assignedToFilter, setAssignedToFilter] = useState(defaultFilter);
+  const [exporting, setExporting] = useState(false);
+
+  // Client-side filters applied to the kanban data
+  const EMPTY_FILTERS = { search: '', minValue: '', maxValue: '', tags: [], closeDate: 'any' };
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const pipelines = pipelinesData?.pipelines || [];
   const pipelineId = activePipelineId || pipelines[0]?._id;
@@ -195,6 +217,101 @@ export default function Pipeline() {
   const teamMembers = (teamData?.users || []).filter((u) => u.isActive !== false);
 
   const queryClient = useQueryClient();
+
+  // ─── Client-side filtering ─────────────────────────────────────────────────
+  const availableTags = useMemo(() => {
+    const set = new Set();
+    kanban.forEach((col) => col.deals.forEach((d) => (d.tags || []).forEach((t) => set.add(t))));
+    return [...set].sort();
+  }, [kanban]);
+
+  const activeFilterCount =
+    (filters.search ? 1 : 0) +
+    (filters.minValue !== '' ? 1 : 0) +
+    (filters.maxValue !== '' ? 1 : 0) +
+    (filters.tags.length > 0 ? 1 : 0) +
+    (filters.closeDate !== 'any' ? 1 : 0);
+
+  const filteredKanban = useMemo(() => {
+    const search = filters.search.trim().toLowerCase();
+    const min = filters.minValue !== '' ? Number(filters.minValue) : null;
+    const max = filters.maxValue !== '' ? Number(filters.maxValue) : null;
+    const tagSet = new Set(filters.tags);
+
+    // Date windows in local time
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfWeek = new Date(startOfToday);
+    endOfWeek.setDate(endOfWeek.getDate() + 7);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    const matchesDate = (deal) => {
+      if (filters.closeDate === 'any') return true;
+      const d = deal.expectedCloseDate ? new Date(deal.expectedCloseDate) : null;
+      switch (filters.closeDate) {
+        case 'overdue':   return d && d < startOfToday;
+        case 'thisWeek':  return d && d >= startOfToday && d <= endOfWeek;
+        case 'thisMonth': return d && d >= startOfToday && d <= endOfMonth;
+        case 'none':      return !d;
+        default: return true;
+      }
+    };
+
+    const matches = (deal) => {
+      if (search) {
+        const hay = [
+          deal.title,
+          deal.contact?.firstName, deal.contact?.lastName, deal.contact?.company,
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      const v = deal.value || 0;
+      if (min !== null && v < min) return false;
+      if (max !== null && v > max) return false;
+      if (tagSet.size > 0 && !(deal.tags || []).some((t) => tagSet.has(t))) return false;
+      if (!matchesDate(deal)) return false;
+      return true;
+    };
+
+    return kanban.map((col) => {
+      const deals = col.deals.filter(matches);
+      return {
+        ...col,
+        deals,
+        totalValue: deals.reduce((s, d) => s + (d.value || 0), 0),
+      };
+    });
+  }, [kanban, filters]);
+
+  const totalDeals = filteredKanban.reduce((s, col) => s + col.deals.length, 0);
+  const totalValue = filteredKanban.reduce((s, col) => s + col.totalValue, 0);
+
+  const toggleTag = (tag) => {
+    setFilters((f) => ({
+      ...f,
+      tags: f.tags.includes(tag) ? f.tags.filter((t) => t !== tag) : [...f.tags, tag],
+    }));
+  };
+
+  const clearFilters = () => setFilters(EMPTY_FILTERS);
+
+  const handleExport = async () => {
+    if (!pipelineId) return;
+    setExporting(true);
+    try {
+      await downloadFile('/deals/export', {
+        params: {
+          pipelineId,
+          status: 'open',
+          assignedTo: assignedToFilter || undefined,
+        },
+      });
+    } catch {
+      toast.error('Export failed — please try again');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const onDragEnd = (result) => {
     if (!canWrite) return;
@@ -256,7 +373,19 @@ export default function Pipeline() {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              type="search"
+              value={filters.search}
+              onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+              placeholder="Search deals…"
+              className="h-8 w-40 sm:w-48 pl-8 pr-2 rounded-lg border border-border bg-background text-xs sm:text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+          </div>
+
           <div className="flex items-center gap-1.5">
             <Filter className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
             <select
@@ -273,6 +402,129 @@ export default function Pipeline() {
                 ))}
             </select>
           </div>
+
+          {/* More filters popover */}
+          <div className="relative">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFiltersOpen((o) => !o)}
+              className={cn(activeFilterCount > 0 && 'border-primary text-primary')}
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              <span className="hidden sm:inline">Filters</span>
+              {activeFilterCount > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-primary text-primary-foreground">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+            {filtersOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setFiltersOpen(false)} />
+                <div className="absolute right-0 top-10 w-72 bg-background border border-border rounded-xl shadow-lg z-20 p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold">Filter deals</span>
+                    {activeFilterCount > 0 && (
+                      <button onClick={clearFilters} className="text-xs text-primary hover:underline">
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5">Value range</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="Min"
+                        value={filters.minValue}
+                        onChange={(e) => setFilters((f) => ({ ...f, minValue: e.target.value }))}
+                        className="h-8 flex-1 min-w-0 px-2 rounded-lg border border-border bg-background text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      />
+                      <span className="text-muted-foreground text-xs self-center">to</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="Max"
+                        value={filters.maxValue}
+                        onChange={(e) => setFilters((f) => ({ ...f, maxValue: e.target.value }))}
+                        className="h-8 flex-1 min-w-0 px-2 rounded-lg border border-border bg-background text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5">Expected close</label>
+                    <div className="grid grid-cols-2 gap-1">
+                      {[
+                        { value: 'any',       label: 'Any' },
+                        { value: 'overdue',   label: 'Overdue' },
+                        { value: 'thisWeek',  label: 'This week' },
+                        { value: 'thisMonth', label: 'This month' },
+                        { value: 'none',      label: 'No date' },
+                      ].map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setFilters((f) => ({ ...f, closeDate: opt.value }))}
+                          className={cn(
+                            'px-2 py-1.5 text-xs rounded-lg border transition-colors',
+                            filters.closeDate === opt.value
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'bg-background border-border text-muted-foreground hover:border-primary/40'
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5">
+                      Tags {availableTags.length === 0 && <span className="text-muted-foreground font-normal">(none on these deals)</span>}
+                    </label>
+                    {availableTags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto">
+                        {availableTags.map((tag) => {
+                          const active = filters.tags.includes(tag);
+                          return (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => toggleTag(tag)}
+                              className={cn(
+                                'px-2 py-0.5 text-xs rounded-full border transition-colors',
+                                active
+                                  ? 'bg-primary text-primary-foreground border-primary'
+                                  : 'bg-background border-border text-muted-foreground hover:border-primary/40'
+                              )}
+                            >
+                              {tag}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            loading={exporting}
+            disabled={!pipelineId}
+            title="Download open deals in this pipeline as CSV"
+          >
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Export</span>
+          </Button>
           {canWrite && (
             <Button size="sm" onClick={() => setShowCreate(true)}>
               <Plus className="w-4 h-4" />
@@ -282,20 +534,52 @@ export default function Pipeline() {
         </div>
       </div>
 
+      {/* Active filter chips */}
+      {activeFilterCount > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {filters.search && (
+            <FilterChip label={`"${filters.search}"`} onRemove={() => setFilters((f) => ({ ...f, search: '' }))} />
+          )}
+          {filters.minValue !== '' && (
+            <FilterChip label={`≥ ${formatCurrency(Number(filters.minValue))}`} onRemove={() => setFilters((f) => ({ ...f, minValue: '' }))} />
+          )}
+          {filters.maxValue !== '' && (
+            <FilterChip label={`≤ ${formatCurrency(Number(filters.maxValue))}`} onRemove={() => setFilters((f) => ({ ...f, maxValue: '' }))} />
+          )}
+          {filters.tags.map((tag) => (
+            <FilterChip key={tag} label={`#${tag}`} onRemove={() => toggleTag(tag)} />
+          ))}
+          {filters.closeDate !== 'any' && (
+            <FilterChip
+              label={{ overdue: 'Overdue', thisWeek: 'Closes this week', thisMonth: 'Closes this month', none: 'No close date' }[filters.closeDate]}
+              onRemove={() => setFilters((f) => ({ ...f, closeDate: 'any' }))}
+            />
+          )}
+          <button onClick={clearFilters} className="text-xs text-muted-foreground hover:text-foreground underline ml-1">
+            Clear all
+          </button>
+        </div>
+      )}
+
       {/* Pipeline summary */}
       {pipeline && (
         <div className="flex gap-4 text-sm text-muted-foreground">
-          <span>{kanban.reduce((s, col) => s + col.deals.length, 0)} open deals</span>
+          <span>
+            {totalDeals} {totalDeals === 1 ? 'deal' : 'deals'}
+            {activeFilterCount > 0 && (
+              <span className="text-muted-foreground/60"> of {kanban.reduce((s, col) => s + col.deals.length, 0)}</span>
+            )}
+          </span>
           <span>·</span>
-          <span>{formatCurrency(kanban.reduce((s, col) => s + col.totalValue, 0))} total value</span>
+          <span>{formatCurrency(totalValue)} total value</span>
         </div>
       )}
 
       {/* Kanban board */}
       <DragDropContext onDragEnd={onDragEnd}>
         <div className="flex gap-4 overflow-x-auto pb-4 kanban-scroll -mx-6 px-6">
-          {kanban.map(({ stage, deals, totalValue }) => (
-            <div key={stage._id} className="flex-shrink-0 w-64">
+          {filteredKanban.map(({ stage, deals, totalValue }) => (
+            <div key={stage._id} className="shrink-0 w-64">
               {/* Column header */}
               <div className="flex items-center justify-between mb-2 px-1">
                 <div className="flex items-center gap-2">

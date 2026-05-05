@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Plus, Upload, MessageCircle, Phone, Mail, Sparkles, Check, X, AlertCircle, Trash2 } from 'lucide-react';
-import { useContacts, useCreateContact, useDeleteContact, useTeam } from '@/hooks/useData';
+import { Search, Plus, Upload, Download, MessageCircle, Phone, Mail, Sparkles, Check, X, AlertCircle, Trash2, UserPlus, Tag as TagIcon, Archive } from 'lucide-react';
+import { useContacts, useCreateContact, useDeleteContact, useTeam, useBulkUpdateContacts, useContactTags } from '@/hooks/useData';
 import { useRole } from '@/hooks/useRole';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Input, Select, Badge, Modal, EmptyState, Spinner, Card } from '@/components/ui';
@@ -10,7 +10,7 @@ import { usePlan } from '@/context/PlanContext';
 import { UsageWarningBanner } from '@/components/PlanBanners';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
-import api from '@/lib/api';
+import api, { downloadFile } from '@/lib/api';
 import { callClaude } from '@/lib/ai';
 
 const STATUS_OPTIONS = [
@@ -325,6 +325,170 @@ function CreateContactModal({ open, onClose }) {
   );
 }
 
+function BulkActionsBar({ selectedIds, teamMembers, onClear, onDone }) {
+  const { mutateAsync, isPending } = useBulkUpdateContacts();
+  const { data: tagsData } = useContactTags();
+  const [openMenu, setOpenMenu] = useState(null); // 'assign' | 'tag' | null
+  const [newTag, setNewTag] = useState('');
+  const [confirmArchive, setConfirmArchive] = useState(false);
+
+  const ids = [...selectedIds];
+  const count = ids.length;
+  if (count === 0) return null;
+
+  const close = () => setOpenMenu(null);
+
+  const apply = async (action, payload) => {
+    await mutateAsync({ ids, action, payload });
+    close();
+    setNewTag('');
+    onDone?.();
+  };
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-xl bg-primary/5 border border-primary/20">
+        <span className="text-sm font-medium text-primary">
+          {count} selected
+        </span>
+        <span className="text-muted-foreground">·</span>
+
+        {/* Assign */}
+        <div className="relative">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setOpenMenu(openMenu === 'assign' ? null : 'assign')}
+          >
+            <UserPlus className="w-3.5 h-3.5" /> Assign
+          </Button>
+          {openMenu === 'assign' && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={close} />
+              <div className="absolute left-0 top-9 w-48 bg-background border border-border rounded-lg shadow-lg z-20 py-1 max-h-64 overflow-y-auto">
+                <button
+                  onClick={() => apply('assign', { assignedTo: null })}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors"
+                >
+                  Unassigned
+                </button>
+                <div className="my-1 border-t border-border" />
+                {teamMembers.map((m) => (
+                  <button
+                    key={m._id}
+                    onClick={() => apply('assign', { assignedTo: m._id })}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors"
+                  >
+                    {m.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Add tag */}
+        <div className="relative">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setOpenMenu(openMenu === 'tag' ? null : 'tag')}
+          >
+            <TagIcon className="w-3.5 h-3.5" /> Add tag
+          </Button>
+          {openMenu === 'tag' && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={close} />
+              <div className="absolute left-0 top-9 w-64 bg-background border border-border rounded-lg shadow-lg z-20 p-3 space-y-2">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (newTag.trim()) apply('addTag', { tag: newTag.trim() });
+                  }}
+                  className="flex gap-1"
+                >
+                  <input
+                    autoFocus
+                    type="text"
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    placeholder="New tag…"
+                    className="h-8 flex-1 min-w-0 px-2 rounded-lg border border-border bg-background text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                  <Button type="submit" size="sm" disabled={!newTag.trim()}>Add</Button>
+                </form>
+                {tagsData?.tags?.length > 0 && (
+                  <>
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mt-1">Existing tags</p>
+                    <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                      {tagsData.tags.map((tag) => (
+                        <button
+                          key={tag}
+                          onClick={() => apply('addTag', { tag })}
+                          className="px-2 py-0.5 text-xs rounded-full border border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Archive */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setConfirmArchive(true)}
+          className="text-red-600 hover:bg-red-50 hover:border-red-200"
+        >
+          <Archive className="w-3.5 h-3.5" /> Archive
+        </Button>
+
+        <div className="ml-auto">
+          <button
+            onClick={onClear}
+            className="text-xs text-muted-foreground hover:text-foreground underline"
+            disabled={isPending}
+          >
+            Clear selection
+          </button>
+        </div>
+      </div>
+
+      <Modal
+        open={confirmArchive}
+        onClose={() => setConfirmArchive(false)}
+        title={`Archive ${count} contact${count === 1 ? '' : 's'}?`}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Selected contacts will be removed from your list. Their deals and tasks stay in place. This cannot be undone from the UI.
+          </p>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setConfirmArchive(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white border-0"
+              loading={isPending}
+              onClick={async () => {
+                await apply('archive');
+                setConfirmArchive(false);
+              }}
+            >
+              Yes, archive
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
 export default function Contacts() {
   const [showImport, setShowImport] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -344,6 +508,51 @@ export default function Contacts() {
   const contacts = data?.contacts || [];
   const pagination = data?.pagination;
   const teamMembers = (teamData?.users || []).filter((u) => u.isActive !== false);
+  const [exporting, setExporting] = useState(false);
+
+  // Bulk selection — clears on filter or page change
+  const [selected, setSelected] = useState(() => new Set());
+  useEffect(() => { setSelected(new Set()); }, [search, status, assignedTo, page]);
+
+  const visibleIds = contacts.map((c) => c._id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const someVisibleSelected = !allVisibleSelected && visibleIds.some((id) => selected.has(id));
+
+  const toggleOne = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleIds.forEach((id) => next.delete(id));
+      } else {
+        visibleIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelected(new Set());
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await downloadFile('/contacts/export', {
+        params: { search: search || undefined, status: status || undefined, assignedTo: assignedTo || undefined },
+      });
+    } catch {
+      toast.error('Export failed — please try again');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-4 max-w-6xl">
@@ -384,6 +593,17 @@ export default function Contacts() {
               <option key={m._id} value={m._id}>{m.name}</option>
             ))}
           </select>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            loading={exporting}
+            disabled={!contacts.length && !exporting}
+            title="Download visible contacts as CSV"
+          >
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Export</span>
+          </Button>
           {canWrite && (
             <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
               <Upload className="w-4 h-4" />
@@ -398,6 +618,16 @@ export default function Contacts() {
           )}
         </div>
       </div>
+
+      {/* Bulk actions */}
+      {canWrite && (
+        <BulkActionsBar
+          selectedIds={selected}
+          teamMembers={teamMembers}
+          onClear={clearSelection}
+          onDone={clearSelection}
+        />
+      )}
 
       {/* Table */}
       <Card>
@@ -415,6 +645,18 @@ export default function Contacts() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
+                  {canWrite && (
+                    <th className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all visible contacts"
+                        checked={allVisibleSelected}
+                        ref={(el) => { if (el) el.indeterminate = someVisibleSelected; }}
+                        onChange={toggleAllVisible}
+                        className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+                      />
+                    </th>
+                  )}
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide hidden md:table-cell">Company</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide hidden lg:table-cell">Contact</th>
@@ -425,7 +667,24 @@ export default function Contacts() {
               </thead>
               <tbody>
                 {contacts.map((c) => (
-                  <tr key={c._id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors group">
+                  <tr
+                    key={c._id}
+                    className={cn(
+                      'border-b border-border last:border-0 hover:bg-muted/30 transition-colors group',
+                      selected.has(c._id) && 'bg-primary/5'
+                    )}
+                  >
+                    {canWrite && (
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${c.firstName} ${c.lastName}`}
+                          checked={selected.has(c._id)}
+                          onChange={() => toggleOne(c._id)}
+                          className="w-4 h-4 rounded border-border accent-primary cursor-pointer"
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <Link to={`/contacts/${c._id}`} className="flex items-center gap-3 group">
                         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary shrink-0">

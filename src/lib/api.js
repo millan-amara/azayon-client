@@ -71,4 +71,27 @@ api.interceptors.response.use(
   }
 );
 
+// Download a file from an API endpoint and trigger the browser's save dialog.
+// Uses the same auth/refresh pipeline as regular requests.
+export async function downloadFile(path, { params, filename } = {}) {
+  const { data, headers } = await api.get(path, { params, responseType: 'blob' });
+
+  // Try to read filename from Content-Disposition; fall back to provided name.
+  let name = filename || 'download';
+  const cd = headers['content-disposition'] || headers['Content-Disposition'];
+  if (cd) {
+    const match = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+    if (match) name = decodeURIComponent(match[1]);
+  }
+
+  const url = window.URL.createObjectURL(new Blob([data]));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 export default api;

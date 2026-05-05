@@ -73,6 +73,20 @@ export function useAddTimeline() {
   });
 }
 
+export function useBulkUpdateContacts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, action, payload }) =>
+      api.post('/contacts/bulk', { ids, action, payload }).then((r) => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['contacts'] });
+      qc.invalidateQueries({ queryKey: ['contact-tags'] });
+      toast.success(data.message || 'Contacts updated');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Bulk update failed'),
+  });
+}
+
 export function useContactTags() {
   return useQuery({
     queryKey: ['contact-tags'],
@@ -189,11 +203,12 @@ export function usePipelines() {
 
 // ─── TASKS ───────────────────────────────────────────────────────────────────
 
-export function useTasks(params = {}) {
+export function useTasks(params = {}, options = {}) {
   return useQuery({
     queryKey: ['tasks', params],
     queryFn: () => api.get('/tasks', { params }).then((r) => r.data),
     ...STALE_1MIN,
+    ...options,
   });
 }
 
@@ -367,6 +382,40 @@ export function useMarkAllRead() {
   return useMutation({
     mutationFn: () => api.put('/notifications/read-all').then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.put(`/notifications/${id}/read`).then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+// ─── GLOBAL SEARCH ───────────────────────────────────────────────────────────
+
+export function useGlobalSearch(q) {
+  return useQuery({
+    queryKey: ['search', q],
+    queryFn: () => api.get('/search', { params: { q } }).then((r) => r.data),
+    enabled: typeof q === 'string' && q.trim().length >= 2,
+    staleTime: 30_000,
+    keepPreviousData: true,
+  });
+}
+
+// ─── ORG ─────────────────────────────────────────────────────────────────────
+
+export function useUpdateOrg() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => api.put('/orgs/me', data).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['org'] });
+      toast.success('Organisation settings saved');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to update organisation'),
   });
 }
 
