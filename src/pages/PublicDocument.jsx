@@ -25,6 +25,8 @@ export default function PublicDocument() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [paying, setPaying]   = useState(false);
+  const [emailInput, setEmailInput] = useState('');
+  const [emailError, setEmailError] = useState('');
   const justPaid              = searchParams.get('paid') === 'success';
 
   useEffect(() => {
@@ -37,12 +39,28 @@ export default function PublicDocument() {
   }, [token]);
 
   const handlePay = async () => {
+    // If the invoice has no email on file, validate the user-supplied one before sending
+    const needsEmail = !doc?.customerEmail;
+    if (needsEmail) {
+      const email = emailInput.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        setEmailError('Please enter a valid email');
+        return;
+      }
+      setEmailError('');
+    }
+
     setPaying(true);
     try {
-      const { data } = await publicApi.post(`/public/documents/${token}/pay`);
+      const { data } = await publicApi.post(
+        `/public/documents/${token}/pay`,
+        needsEmail ? { email: emailInput.trim() } : {}
+      );
       window.location.assign(data.authorizationUrl);
     } catch (err) {
-      alert(err.response?.data?.error || 'Could not start payment');
+      const msg = err.response?.data?.error || 'Could not start payment';
+      if (msg.toLowerCase().includes('email')) setEmailError(msg);
+      else alert(msg);
       setPaying(false);
     }
   };
@@ -185,6 +203,33 @@ export default function PublicDocument() {
             </div>
           )}
         </div>
+
+        {/* Email input — only when the invoice has no email on file and customer wants to pay online */}
+        {isInvoice && !isPaid && !doc.customerEmail && (
+          <div className="bg-card border border-border rounded-2xl p-4 space-y-2">
+            <label htmlFor="payerEmail" className="text-sm font-medium">
+              Email for receipt
+            </label>
+            <input
+              id="payerEmail"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={emailInput}
+              onChange={(e) => { setEmailInput(e.target.value); setEmailError(''); }}
+              className={cn(
+                'w-full h-10 px-3 rounded-lg border bg-background text-sm focus-visible:outline-none focus-visible:ring-2',
+                emailError
+                  ? 'border-red-300 focus-visible:ring-red-300'
+                  : 'border-border focus-visible:ring-ring'
+              )}
+            />
+            {emailError
+              ? <p className="text-xs text-red-600">{emailError}</p>
+              : <p className="text-xs text-muted-foreground">Paystack will send your receipt here.</p>}
+          </div>
+        )}
 
         {/* Action bar */}
         <div className="flex flex-col sm:flex-row gap-2">
