@@ -25,9 +25,11 @@ export default function PublicDocument() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [paying, setPaying]   = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [emailInput, setEmailInput] = useState('');
   const [emailError, setEmailError] = useState('');
   const justPaid              = searchParams.get('paid') === 'success';
+  const paystackReference     = searchParams.get('reference') || searchParams.get('trxref');
 
   useEffect(() => {
     let alive = true;
@@ -37,6 +39,23 @@ export default function PublicDocument() {
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [token]);
+
+  // After the user is redirected back from Paystack with ?paid=success,
+  // verify the transaction directly so we don't depend on the webhook.
+  useEffect(() => {
+    if (!justPaid || !paystackReference || !doc) return;
+    if (doc.status === 'paid') return;
+    let alive = true;
+    // Synchronising local UI state with the result of an external API call —
+    // the canonical legit use case for setState inside an effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVerifying(true);
+    publicApi.post(`/public/documents/${token}/verify-payment`, { reference: paystackReference })
+      .then((res) => { if (alive) setDoc(res.data.document); })
+      .catch(() => { /* webhook may still come through — leave the doc as-is */ })
+      .finally(() => { if (alive) setVerifying(false); });
+    return () => { alive = false; };
+  }, [justPaid, paystackReference, doc, token]);
 
   const handlePay = async () => {
     // If the invoice has no email on file, validate the user-supplied one before sending
@@ -91,13 +110,23 @@ export default function PublicDocument() {
   return (
     <div className="min-h-screen bg-muted/30 py-8 px-4">
       <div className="max-w-2xl mx-auto space-y-4">
-        {/* Just-paid banner */}
+        {/* Just-paid banner — copy reflects verification state */}
         {justPaid && (
           <div className="flex items-center gap-3 p-4 rounded-xl bg-green-50 border border-green-200">
-            <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+            {verifying
+              ? <Loader2 className="w-5 h-5 text-green-600 animate-spin shrink-0" />
+              : <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />}
             <div>
-              <p className="font-medium text-green-800">Payment received</p>
-              <p className="text-xs text-green-700">Thanks! Your payment is being processed and will appear here shortly.</p>
+              <p className="font-medium text-green-800">
+                {isPaid ? 'Payment confirmed' : verifying ? 'Confirming payment…' : 'Payment received'}
+              </p>
+              <p className="text-xs text-green-700">
+                {isPaid
+                  ? 'Thanks! A receipt has been sent to your email.'
+                  : verifying
+                    ? 'Checking with Paystack — this should take a few seconds.'
+                    : 'Thanks! Your payment is being processed and will appear here shortly.'}
+              </p>
             </div>
           </div>
         )}
@@ -205,7 +234,7 @@ export default function PublicDocument() {
         </div>
 
         {/* Email input — only when the invoice has no email on file and customer wants to pay online */}
-        {isInvoice && !isPaid && !doc.customerEmail && (
+        {isInvoice && !isPaid && !justPaid && !doc.customerEmail && (
           <div className="bg-card border border-border rounded-2xl p-4 space-y-2">
             <label htmlFor="payerEmail" className="text-sm font-medium">
               Email for receipt
@@ -241,7 +270,7 @@ export default function PublicDocument() {
           >
             <Download className="w-4 h-4" /> Download PDF
           </a>
-          {isInvoice && !isPaid && (
+          {isInvoice && !isPaid && !justPaid && (
             <Button onClick={handlePay} loading={paying} className="flex-1">
               <CreditCard className="w-4 h-4" /> Pay {formatCurrency(doc.total, doc.currency)}
             </Button>
