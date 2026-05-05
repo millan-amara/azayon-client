@@ -290,6 +290,41 @@ export function useDeletePipeline() {
   });
 }
 
+// ─── SAVED VIEWS (per-user filter combos) ────────────────────────────────────
+
+export function useSavedViews(page) {
+  return useQuery({
+    queryKey: ['saved-views', page],
+    queryFn: () => api.get('/saved-views', { params: { page } }).then((r) => r.data),
+    enabled: !!page,
+    ...STALE_5MIN,
+  });
+}
+
+export function useCreateSavedView() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => api.post('/saved-views', data).then((r) => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['saved-views', data?.view?.page] });
+      toast.success('View saved');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to save view'),
+  });
+}
+
+export function useDeleteSavedView() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.delete(`/saved-views/${id}`).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['saved-views'] });
+      toast.success('View deleted');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to delete view'),
+  });
+}
+
 // ─── CUSTOMERS ───────────────────────────────────────────────────────────────
 
 export function useCustomers(params = {}) {
@@ -318,6 +353,14 @@ export function useDashboard() {
     queryFn: () => api.get('/dashboard').then((r) => r.data),
     staleTime: 300_000,       // 5 min — dashboard stats don't need to be live
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useDashboardActivity(limit = 20) {
+  return useQuery({
+    queryKey: ['dashboard-activity', limit],
+    queryFn: () => api.get('/dashboard/activity', { params: { limit } }).then((r) => r.data),
+    ...STALE_1MIN,
   });
 }
 

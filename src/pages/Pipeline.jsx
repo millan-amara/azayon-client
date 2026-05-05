@@ -1,15 +1,18 @@
 import { useState, useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { Plus, MessageCircle, MoreVertical, Trophy, XCircle, Filter, Download, Search, X, SlidersHorizontal } from 'lucide-react';
+import { Plus, MessageCircle, MoreVertical, Trophy, XCircle, Filter, Download, Upload, Search, X, SlidersHorizontal, Sparkles, AlertCircle, Check } from 'lucide-react';
+import Papa from 'papaparse';
+import { callClaude } from '@/lib/ai';
 import { useKanban, usePipelines, useUpdateDeal, useCreateDeal, useMarkDealWon, useMarkDealLost, useContacts, useTeam, useCustomFields } from '@/hooks/useData';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRole } from '@/hooks/useRole';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Modal, Input, Select, Textarea, Spinner, EmptyState, Card } from '@/components/ui';
 import { formatCurrency, getWhatsAppUrl, cn } from '@/lib/utils';
-import { downloadFile } from '@/lib/api';
+import api, { downloadFile } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import SavedViewSelector from '@/components/SavedViewSelector';
 
 function DealCard({ deal, index, onWon, onLost }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -96,6 +99,285 @@ function DealCard({ deal, index, onWon, onLost }) {
         </div>
       )}
     </Draggable>
+  );
+}
+
+// ─── DEAL CSV IMPORT ─────────────────────────────────────────────────────────
+// Same pattern as Contacts.jsx SmartImportModal: AI maps CSV headers to deal
+// fields, user reviews, then we POST in bulk. Adds a setup step where the user
+// picks the destination pipeline + default stage.
+
+const DEAL_CRM_FIELDS = [
+  { value: 'title',             label: 'Deal title' },
+  { value: 'value',             label: 'Value (number)' },
+  { value: 'currency',          label: 'Currency' },
+  { value: 'contactName',       label: 'Contact name' },
+  { value: 'contactEmail',      label: 'Contact email' },
+  { value: 'contactPhone',      label: 'Contact phone' },
+  { value: 'stageName',         label: 'Stage name (optional, falls back to default)' },
+  { value: 'expectedCloseDate', label: 'Expected close date' },
+  { value: 'notes',             label: 'Notes' },
+  { value: '_skip',             label: '— Skip this column —' },
+];
+
+function SmartDealImportModal({ open, onClose, pipelines, defaultPipelineId, onImported }) {
+  const [step, setStep] = useState('setup'); // setup | upload | mapping | importing | done
+  const [pipelineId, setPipelineId] = useState(defaultPipelineId || pipelines?.[0]?._id || '');
+  const [stageId, setStageId] = useState('');
+  const [csvData, setCsvData] = useState(null);
+  const [mapping, setMapping] = useState({});
+  const [analysing, setAnalysing] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const pipeline = pipelines?.find((p) => p._id === pipelineId);
+  const openStages = (pipeline?.stages || []).filter((s) => !s.isWon && !s.isLost).sort((a, b) => a.order - b.order);
+
+  // Default to the first open stage when pipeline changes
+  useMemo(() => {
+    if (!stageId && openStages.length > 0) setStageId(openStages[0]._id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipelineId]);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setAnalysing(true);
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      preview: 5,
+      complete: (results) => {
+        const headers = results.meta.fields || [];
+        const previewRows = results.data;
+
+        // Re-parse in full to import every row
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          complete: async (full) => {
+            setCsvData({ headers, rows: full.data, preview: previewRows });
+
+            try {
+              const sample = previewRows[0] || {};
+              const sampleStr = headers.map((h) => `"${h}": "${sample[h] || ''}"`).join(', ');
+              const text = await callClaude({
+                systemPrompt: `You map CSV column headers to a CRM deal schema.
+Available fields: title, value, currency, contactName, contactEmail, contactPhone, stageName, expectedCloseDate, notes.
+Map every header to one of those fields, or "_skip" if it doesn't fit.
+Reply with valid JSON only — no markdown, no commentary.`,
+                userPrompt: `Headers: ${headers.join(', ')}
+Sample row: {${sampleStr}}
+
+Respond with: {"CSV Header": "field", ...}`,
+                maxTokens: 300,
+              });
+              const clean = text.replace(/```json|```/g, '').trim();
+              setMapping(JSON.parse(clean));
+            } catch {
+              const fallback = {};
+              headers.forEach((h) => { fallback[h] = '_skip'; });
+              setMapping(fallback);
+              toast('Could not auto-map columns — please map manually', { icon: '⚠️' });
+            } finally {
+              setAnalysing(false);
+              setStep('mapping');
+            }
+          },
+        });
+      },
+    });
+  };
+
+  const previewDeals = (csvData?.preview || []).slice(0, 3).map((row) => {
+    const d = {};
+    Object.entries(mapping).forEach(([h, f]) => { if (f && f !== '_skip') d[f] = row[h]; });
+    return d;
+  });
+  const mappedCount = Object.values(mapping).filter((v) => v && v !== '_skip').length;
+  const titleMapped = Object.values(mapping).includes('title');
+
+  const handleImport = async () => {
+    setStep('importing');
+    try {
+      const deals = (csvData.rows || []).map((row) => {
+        const d = {};
+        Object.entries(mapping).forEach(([h, f]) => {
+          if (f && f !== '_skip' && row[h] != null && row[h] !== '') d[f] = row[h];
+        });
+        return d;
+      }).filter((d) => d.title); // server will skip these too, but fail fast
+
+      const { data } = await api.post('/deals/import', { deals, pipelineId, defaultStageId: stageId });
+      setResult(data);
+      setStep('done');
+      onImported?.();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Import failed — please try again');
+      setStep('mapping');
+    }
+  };
+
+  const reset = () => {
+    setStep('setup');
+    setCsvData(null);
+    setMapping({});
+    setResult(null);
+  };
+
+  const handleClose = () => {
+    onClose();
+    setTimeout(reset, 300);
+  };
+
+  return (
+    <Modal open={open} onClose={handleClose} title="Import deals" className="max-w-2xl">
+      <div className="space-y-5">
+        {step === 'setup' && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Pick where these deals should land. If your CSV has a "Stage" column we'll use that per-row, otherwise everything drops into the default stage.
+            </p>
+            <Select
+              label="Pipeline"
+              value={pipelineId}
+              onChange={(e) => { setPipelineId(e.target.value); setStageId(''); }}
+              options={pipelines.map((p) => ({ value: p._id, label: p.name }))}
+            />
+            <Select
+              label="Default stage"
+              value={stageId}
+              onChange={(e) => setStageId(e.target.value)}
+              options={[
+                { value: '', label: 'Select a stage…' },
+                ...openStages.map((s) => ({ value: s._id, label: s.name })),
+              ]}
+            />
+            <div className="flex gap-3 pt-2">
+              <Button variant="outline" className="flex-1" onClick={handleClose}>Cancel</Button>
+              <Button className="flex-1" onClick={() => setStep('upload')} disabled={!pipelineId || !stageId}>
+                Continue
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 'upload' && !analysing && (
+          <div className="space-y-4">
+            <div className="border-2 border-dashed border-border rounded-xl p-8 text-center hover:border-primary/50 transition-colors">
+              <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+              <p className="text-sm font-medium mb-1">Drop a CSV file or click to browse</p>
+              <p className="text-xs text-muted-foreground mb-4">Any column names work — AI will map them automatically</p>
+              <label className="cursor-pointer">
+                <input type="file" accept=".csv" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
+                <Button variant="outline" size="sm" onClick={() => {}}>Choose CSV file</Button>
+              </label>
+            </div>
+            <div className="bg-muted/40 rounded-lg p-3">
+              <p className="text-xs font-medium mb-1.5">Useful columns (any names):</p>
+              <p className="text-xs text-muted-foreground font-mono">Deal name, Amount, Customer, Email, Stage, Close date…</p>
+            </div>
+          </div>
+        )}
+
+        {analysing && (
+          <div className="flex items-center gap-3 p-4 bg-primary/5 rounded-xl border border-primary/20">
+            <Sparkles className="w-4 h-4 text-primary animate-pulse" />
+            <div>
+              <p className="text-sm font-medium">Analysing your CSV...</p>
+              <p className="text-xs text-muted-foreground">Claude is mapping your columns</p>
+            </div>
+          </div>
+        )}
+
+        {step === 'mapping' && csvData && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" />
+              <p className="text-sm font-medium">AI mapped {mappedCount} of {csvData.headers.length} columns</p>
+              <p className="text-xs text-muted-foreground">— adjust any that look wrong</p>
+            </div>
+
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {csvData.headers.map((header) => (
+                <div key={header} className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-mono truncate">{header}</p>
+                    <p className="text-xs text-muted-foreground truncate">e.g. {csvData.preview?.[0]?.[header] || '—'}</p>
+                  </div>
+                  <div className="text-muted-foreground text-xs">→</div>
+                  <select
+                    value={mapping[header] || '_skip'}
+                    onChange={(e) => setMapping((m) => ({ ...m, [header]: e.target.value }))}
+                    className="h-8 px-2 rounded-lg border border-border bg-background text-xs focus-visible:outline-none"
+                  >
+                    {DEAL_CRM_FIELDS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            {previewDeals.length > 0 && (
+              <div className="border border-border rounded-lg overflow-hidden">
+                <div className="bg-muted/40 px-3 py-2 border-b border-border">
+                  <p className="text-xs font-medium">Preview (first 3 deals)</p>
+                </div>
+                <div className="divide-y divide-border">
+                  {previewDeals.map((d, i) => (
+                    <div key={i} className="px-3 py-2 text-xs">
+                      <span className="font-medium">{d.title || '(no title — will be skipped)'}</span>
+                      {d.value && <span className="text-muted-foreground ml-2">{formatCurrency(Number(d.value))}</span>}
+                      {d.contactName && <span className="text-muted-foreground ml-2">· {d.contactName}</span>}
+                      {d.stageName && <span className="text-muted-foreground ml-2">· {d.stageName}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <p className="text-xs text-amber-700">
+                {csvData.rows.length} rows found. {!titleMapped && 'Map a "Deal title" column or rows will be skipped. '}
+                Contacts will be linked by email or auto-created if missing.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={handleClose}>Cancel</Button>
+              <Button className="flex-1" onClick={handleImport} disabled={mappedCount === 0 || !titleMapped}>
+                Import {csvData.rows.length} deals
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 'importing' && (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <Spinner />
+            <p className="text-sm font-medium">Importing deals...</p>
+            <p className="text-xs text-muted-foreground">This may take a moment for large files</p>
+          </div>
+        )}
+
+        {step === 'done' && result && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                <Check className="w-5 h-5 text-green-600" />
+              </div>
+              <div>
+                <p className="font-medium text-green-800">Import complete</p>
+                <p className="text-sm text-green-700">{result.message}</p>
+                {result.errors > 0 && (
+                  <p className="text-xs text-amber-600 mt-0.5">{result.errors} row{result.errors === 1 ? '' : 's'} failed</p>
+                )}
+              </div>
+            </div>
+            <Button className="w-full" onClick={handleClose}>Done</Button>
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -237,6 +519,7 @@ export default function Pipeline() {
   const { canWrite, role } = useRole();
   const [activePipelineId, setActivePipelineId] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   // Sales reps default to seeing their own deals
   const defaultFilter = role === 'sales_rep' ? user?._id || '' : '';
@@ -448,6 +731,15 @@ export default function Pipeline() {
             </select>
           </div>
 
+          <SavedViewSelector
+            page="pipeline"
+            currentFilters={{ assignedToFilter, filters }}
+            onApply={(saved) => {
+              if (saved.assignedToFilter !== undefined) setAssignedToFilter(saved.assignedToFilter);
+              if (saved.filters) setFilters({ ...EMPTY_FILTERS, ...saved.filters });
+            }}
+          />
+
           {/* More filters popover */}
           <div className="relative">
             <Button
@@ -571,6 +863,12 @@ export default function Pipeline() {
             <span className="hidden sm:inline">Export</span>
           </Button>
           {canWrite && (
+            <Button variant="outline" size="sm" onClick={() => setShowImport(true)} title="Import deals from CSV">
+              <Upload className="w-4 h-4" />
+              <span className="hidden sm:inline">Import</span>
+            </Button>
+          )}
+          {canWrite && (
             <Button size="sm" onClick={() => setShowCreate(true)}>
               <Plus className="w-4 h-4" />
               <span className="hidden sm:inline">New deal</span>
@@ -670,6 +968,17 @@ export default function Pipeline() {
       </DragDropContext>
 
       <CreateDealModal open={showCreate} onClose={() => setShowCreate(false)} pipeline={pipeline} />
+      <SmartDealImportModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        pipelines={pipelines}
+        defaultPipelineId={pipelineId}
+        onImported={() => {
+          queryClient.invalidateQueries({ queryKey: ['kanban'] });
+          queryClient.invalidateQueries({ queryKey: ['contacts'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        }}
+      />
     </div>
   );
 }

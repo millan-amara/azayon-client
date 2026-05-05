@@ -325,6 +325,8 @@ function EditContactModal({ open, onClose, contact }) {
     company: contact.company || '', jobTitle: contact.jobTitle || '',
     status: contact.status || 'lead', notes: contact.notes || '',
     assignedTo: contact.assignedTo?._id || contact.assignedTo || '',
+    birthday:    contact.birthday    ? new Date(contact.birthday).toISOString().slice(0, 10)    : '',
+    anniversary: contact.anniversary ? new Date(contact.anniversary).toISOString().slice(0, 10) : '',
   });
   const [customValues, setCustomValues] = useState(() => readCustomFields(contact));
 
@@ -341,6 +343,9 @@ function EditContactModal({ open, onClose, contact }) {
     }
     const updates = { ...form };
     if (!updates.assignedTo) delete updates.assignedTo;
+    // Empty date strings would break Mongoose Date casting — convert to null to clear, or strip
+    if (!updates.birthday)    updates.birthday = null;
+    if (!updates.anniversary) updates.anniversary = null;
     if (customFields.length > 0) updates.customFields = customValues;
     await mutateAsync({ id: contact._id, ...updates });
     onClose();
@@ -374,6 +379,11 @@ function EditContactModal({ open, onClose, contact }) {
           ]}
         />
         <Textarea label="Notes" value={form.notes} onChange={set('notes')} rows={3} />
+
+        <div className="grid grid-cols-2 gap-4">
+          <Input label="Birthday" type="date" value={form.birthday} onChange={set('birthday')} />
+          <Input label="Anniversary" type="date" value={form.anniversary} onChange={set('anniversary')} />
+        </div>
 
         {customFields.length > 0 && (
           <div className="space-y-3 pt-2 border-t border-border">
@@ -523,13 +533,19 @@ export default function ContactDetail() {
         </div>
 
         <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-border">
-          {[{ label: 'Email', value: contact.email }, { label: 'Phone', value: contact.phone }, { label: 'Country', value: contact.country }, { label: 'Added', value: formatDate(contact.createdAt) }]
-            .map(({ label, value }) => value && (
-              <div key={label}>
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="text-sm font-medium mt-0.5 truncate">{value}</p>
-              </div>
-            ))}
+          {[
+            { label: 'Email', value: contact.email },
+            { label: 'Phone', value: contact.phone },
+            { label: 'Country', value: contact.country },
+            { label: 'Added', value: formatDate(contact.createdAt) },
+            { label: '🎂 Birthday',    value: contact.birthday    ? formatDate(contact.birthday)    : null },
+            { label: '💐 Anniversary', value: contact.anniversary ? formatDate(contact.anniversary) : null },
+          ].map(({ label, value }) => value && (
+            <div key={label}>
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="text-sm font-medium mt-0.5 truncate">{value}</p>
+            </div>
+          ))}
         </div>
         {contact.notes && (
           <div className="mt-4 pt-4 border-t border-border">

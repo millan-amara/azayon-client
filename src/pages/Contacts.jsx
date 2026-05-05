@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, Plus, Upload, Download, MessageCircle, Phone, Mail, Sparkles, Check, X, AlertCircle, Trash2, UserPlus, Tag as TagIcon, Archive } from 'lucide-react';
 import { useContacts, useCreateContact, useDeleteContact, useTeam, useBulkUpdateContacts, useContactTags, useCustomFields } from '@/hooks/useData';
 import { useQueryClient } from '@tanstack/react-query';
+import SavedViewSelector from '@/components/SavedViewSelector';
 import { useRole } from '@/hooks/useRole';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Input, Select, Badge, Modal, EmptyState, Spinner, Card } from '@/components/ui';
@@ -279,6 +280,7 @@ function CreateContactModal({ open, onClose }) {
   const [form, setForm] = useState({
     firstName: '', lastName: '', email: '', phone: '',
     company: '', jobTitle: '', status: 'lead', assignedTo: '',
+    birthday: '', anniversary: '',
   });
   const [customValues, setCustomValues] = useState({});
 
@@ -295,12 +297,15 @@ function CreateContactModal({ open, onClose }) {
       }
     }
     const payload = { ...form };
+    // Empty string dates would fail Mongoose Date casting — strip them
+    if (!payload.birthday)    delete payload.birthday;
+    if (!payload.anniversary) delete payload.anniversary;
     if (Object.keys(customValues).length > 0) {
       payload.customFields = customValues;
     }
     await mutateAsync(payload);
     onClose();
-    setForm({ firstName: '', lastName: '', email: '', phone: '', company: '', jobTitle: '', status: 'lead', assignedTo: '' });
+    setForm({ firstName: '', lastName: '', email: '', phone: '', company: '', jobTitle: '', status: 'lead', assignedTo: '', birthday: '', anniversary: '' });
     setCustomValues({});
   };
 
@@ -330,6 +335,21 @@ function CreateContactModal({ open, onClose }) {
             ...(teamData?.users || []).map((u) => ({ value: u._id, label: u.name })),
           ]}
         />
+
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="Birthday"
+            type="date"
+            value={form.birthday}
+            onChange={set('birthday')}
+          />
+          <Input
+            label="Anniversary"
+            type="date"
+            value={form.anniversary}
+            onChange={set('anniversary')}
+          />
+        </div>
 
         {/* Custom fields */}
         {customFields.length > 0 && (
@@ -652,6 +672,16 @@ export default function Contacts() {
             <Download className="w-4 h-4" />
             <span className="hidden sm:inline">Export</span>
           </Button>
+          <SavedViewSelector
+            page="contacts"
+            currentFilters={{ search, status, assignedTo }}
+            onApply={(saved) => {
+              if (saved.search     !== undefined) setSearch(saved.search);
+              if (saved.status     !== undefined) setStatus(saved.status);
+              if (saved.assignedTo !== undefined) setAssignedTo(saved.assignedTo);
+              setPage(1);
+            }}
+          />
           {canWrite && (
             <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
               <Upload className="w-4 h-4" />

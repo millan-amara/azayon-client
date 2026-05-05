@@ -3,6 +3,7 @@
 // We capture `beforeinstallprompt` early (before React mounts) because the
 // browser only fires it once per session. The InstallAppButton component
 // then calls `triggerInstall()` from a user gesture to surface the native UI.
+import { useEffect, useState } from 'react';
 
 let deferredInstallPrompt = null;
 const installListeners = new Set();
@@ -38,6 +39,15 @@ export function onInstallAvailableChange(listener) {
   // Fire current state immediately so consumers can render correctly on mount
   listener(installAvailable);
   return () => installListeners.delete(listener);
+}
+
+// React hook flavour — components that want to conditionally render based on
+// install availability can use this directly instead of wiring useState +
+// useEffect each time.
+export function useInstallAvailable() {
+  const [available, setAvailable] = useState(installAvailable);
+  useEffect(() => onInstallAvailableChange(setAvailable), []);
+  return available;
 }
 
 export async function triggerInstall() {

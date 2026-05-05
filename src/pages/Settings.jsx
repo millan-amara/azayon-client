@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Copy, Check, Plus, Eye, EyeOff, MoreVertical, Pencil, Trash2, Clock, X, CreditCard, CheckCircle2, Zap, ArrowRight, GripVertical, ChevronDown, ChevronUp, Smartphone } from 'lucide-react';
 import InstallAppButton from '@/components/InstallAppButton';
+import { useInstallAvailable } from '@/lib/pwa';
 import { useAuth } from '@/context/AuthContext';
 import { useTeam, useInviteUser, useUpdateUser, useRemoveUser, useReactivateUser, usePendingInvites, useCancelInvite, usePipelines, useCreatePipeline, useUpdatePipeline, useDeletePipeline, useUpdateOrg, useEmailTemplates, useCreateEmailTemplate, useUpdateEmailTemplate, useDeleteEmailTemplate, useCustomFields, useCreateCustomField, useUpdateCustomField, useDeleteCustomField } from '@/hooks/useData';
 import { Button, Input, Select, Card, Modal, Avatar, Badge } from '@/components/ui';
@@ -511,6 +512,32 @@ const WEEKDAYS = [
   { value: 0, label: 'Sun' },
 ];
 
+// Renders the entire "Install on your phone" card only when the browser has
+// surfaced an install prompt. Once installed, the browser stops firing
+// beforeinstallprompt → the card disappears completely.
+function InstallAppCard() {
+  const available = useInstallAvailable();
+  if (!available) return null;
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+            <Smartphone className="w-4 h-4 text-primary" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold">Install on your phone</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Add Azayon to your home screen for fast, app-like access. Works on Android Chrome and most mobile browsers.
+            </p>
+          </div>
+        </div>
+        <InstallAppButton />
+      </div>
+    </Card>
+  );
+}
+
 function GeneralTab({ org, isAdmin }) {
   const { updateOrg } = useAuth();
   const { mutateAsync, isPending } = useUpdateOrg();
@@ -691,22 +718,7 @@ function GeneralTab({ org, isAdmin }) {
         </div>
       </Card>
 
-      <Card className="p-5">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-              <Smartphone className="w-4 h-4 text-primary" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold">Install on your phone</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Add Azayon to your home screen for fast, app-like access. Works on Android Chrome and most mobile browsers.
-              </p>
-            </div>
-          </div>
-          <InstallAppButton />
-        </div>
-      </Card>
+      <InstallAppCard />
 
       <div className="flex justify-end">
         <Button type="submit" loading={isPending}>Save changes</Button>

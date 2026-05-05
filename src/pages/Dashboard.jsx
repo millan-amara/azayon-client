@@ -1,10 +1,89 @@
-import { Users, TrendingUp, CheckSquare, AlertCircle } from 'lucide-react';
-import { useDashboard } from '@/hooks/useData';
+import { Users, TrendingUp, CheckSquare, AlertCircle, Trophy, XCircle, Briefcase, UserPlus, Activity } from 'lucide-react';
+import { useDashboard, useDashboardActivity } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { StatCard, Card, Spinner } from '@/components/ui';
 import { formatCurrency, timeAgo, CONTACT_STATUS_COLORS, cn } from '@/lib/utils';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Link } from 'react-router-dom';
+
+// ─── Activity feed panel ─────────────────────────────────────────────────────
+
+const ACTIVITY_ICONS = {
+  deal_won:        { Icon: Trophy,    className: 'text-green-600 bg-green-50' },
+  deal_lost:       { Icon: XCircle,   className: 'text-red-500 bg-red-50' },
+  deal_created:    { Icon: Briefcase, className: 'text-primary bg-primary/10' },
+  contact_created: { Icon: UserPlus,  className: 'text-teal-600 bg-teal-50' },
+};
+
+function activityHref(item) {
+  if (!item.resourceId) return null;
+  if (item.resourceType === 'deal')    return `/deals/${item.resourceId}`;
+  if (item.resourceType === 'contact') return `/contacts/${item.resourceId}`;
+  return null;
+}
+
+function activityLine(item) {
+  const actor = item.actor || 'Someone';
+  const amount = item.amount != null ? formatCurrency(item.amount, item.currency) : null;
+  const fromContact = item.contactName ? ` from ${item.contactName}` : '';
+  switch (item.type) {
+    case 'deal_won':
+      return <><strong>{actor}</strong> won <strong>{item.target}</strong>{amount ? ` for ${amount}` : ''}{fromContact}</>;
+    case 'deal_lost':
+      return <><strong>{actor}</strong> marked <strong>{item.target}</strong> as lost{fromContact}</>;
+    case 'deal_created':
+      return <><strong>{actor}</strong> created deal <strong>{item.target}</strong>{amount ? ` (${amount})` : ''}{fromContact}</>;
+    case 'contact_created':
+      return <><strong>{actor}</strong> added <strong>{item.target}</strong></>;
+    default:
+      return <>{actor} · {item.target}</>;
+  }
+}
+
+function ActivityFeed() {
+  const { data, isLoading } = useDashboardActivity(15);
+  const items = data?.activity || [];
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-primary" />
+          <h3 className="text-sm font-semibold">What's happening</h3>
+        </div>
+        <span className="text-xs text-muted-foreground">Last {items.length} events</span>
+      </div>
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Spinner /></div>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-8">No activity yet — once your team logs deals and contacts, the feed lights up here.</p>
+      ) : (
+        <div className="space-y-3">
+          {items.map((item, i) => {
+            const { Icon, className } = ACTIVITY_ICONS[item.type] || { Icon: Activity, className: 'text-muted-foreground bg-muted' };
+            const href = activityHref(item);
+            const content = (
+              <div className="flex items-start gap-3 group">
+                <div className={cn('w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5', className)}>
+                  <Icon className="w-3.5 h-3.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={cn('text-sm leading-snug', href && 'group-hover:text-primary transition-colors')}>
+                    {activityLine(item)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{timeAgo(item.when)}</p>
+                </div>
+              </div>
+            );
+            return href
+              ? <Link key={i} to={href}>{content}</Link>
+              : <div key={i}>{content}</div>;
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -131,6 +210,8 @@ export default function Dashboard() {
           </div>
         </Card>
       </div>
+
+      <ActivityFeed />
 
       {/* Quick actions */}
       <div className="flex gap-3 flex-wrap">
