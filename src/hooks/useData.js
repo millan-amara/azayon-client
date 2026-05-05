@@ -290,6 +290,48 @@ export function useDeletePipeline() {
   });
 }
 
+// ─── PAYMENTS (Paystack Subaccount) ──────────────────────────────────────────
+
+export function usePaystackBanks(country = 'kenya') {
+  return useQuery({
+    queryKey: ['paystack-banks', country],
+    queryFn: () => api.get('/payments/banks', { params: { country } }).then((r) => r.data),
+    ...STALE_30MIN, // bank list rarely changes
+  });
+}
+
+export function usePaystackSubaccount() {
+  return useQuery({
+    queryKey: ['paystack-subaccount'],
+    queryFn: () => api.get('/payments/subaccount').then((r) => r.data),
+    ...STALE_5MIN,
+  });
+}
+
+export function useConnectSubaccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => api.post('/payments/subaccount', data).then((r) => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['paystack-subaccount'] });
+      toast.success(data.message || 'Bank account connected');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to connect account'),
+  });
+}
+
+export function useDisconnectSubaccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.delete('/payments/subaccount').then((r) => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['paystack-subaccount'] });
+      toast.success(data.message || 'Disconnected');
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to disconnect'),
+  });
+}
+
 // ─── SAVED VIEWS (per-user filter combos) ────────────────────────────────────
 
 export function useSavedViews(page) {

@@ -3,7 +3,7 @@ import { Copy, Check, Plus, Eye, EyeOff, MoreVertical, Pencil, Trash2, Clock, X,
 import InstallAppButton from '@/components/InstallAppButton';
 import { useInstallAvailable } from '@/lib/pwa';
 import { useAuth } from '@/context/AuthContext';
-import { useTeam, useInviteUser, useUpdateUser, useRemoveUser, useReactivateUser, usePendingInvites, useCancelInvite, usePipelines, useCreatePipeline, useUpdatePipeline, useDeletePipeline, useUpdateOrg, useEmailTemplates, useCreateEmailTemplate, useUpdateEmailTemplate, useDeleteEmailTemplate, useCustomFields, useCreateCustomField, useUpdateCustomField, useDeleteCustomField } from '@/hooks/useData';
+import { useTeam, useInviteUser, useUpdateUser, useRemoveUser, useReactivateUser, usePendingInvites, useCancelInvite, usePipelines, useCreatePipeline, useUpdatePipeline, useDeletePipeline, useUpdateOrg, useEmailTemplates, useCreateEmailTemplate, useUpdateEmailTemplate, useDeleteEmailTemplate, useCustomFields, useCreateCustomField, useUpdateCustomField, useDeleteCustomField, usePaystackBanks, usePaystackSubaccount, useConnectSubaccount, useDisconnectSubaccount } from '@/hooks/useData';
 import { Button, Input, Select, Card, Modal, Avatar, Badge } from '@/components/ui';
 import { usePlan } from '@/context/PlanContext';
 import { useUpgrade } from '@/components/Upgrade';
@@ -1261,6 +1261,184 @@ function PipelinesTab() {
   );
 }
 
+// ─── PAYMENTS TAB (Paystack Subaccount) ───────────────────────────────────────
+
+function ConnectBankModal({ open, onClose, org }) {
+  const { data: banksData, isLoading: banksLoading } = usePaystackBanks('kenya');
+  const { mutateAsync, isPending } = useConnectSubaccount();
+  const [businessName, setBusinessName] = useState(org?.name || '');
+  const [bankCode, setBankCode] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+
+  const banks = banksData?.banks || [];
+  const selectedBank = banks.find((b) => b.code === bankCode);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!businessName.trim()) return toast.error('Business name is required');
+    if (!bankCode) return toast.error('Choose your bank');
+    if (!/^\d{6,20}$/.test(accountNumber.trim())) return toast.error('Account number must be digits only');
+
+    await mutateAsync({
+      businessName: businessName.trim(),
+      bankCode,
+      accountNumber: accountNumber.trim(),
+      bankName: selectedBank?.name,
+    });
+    onClose();
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Connect bank account">
+      <form onSubmit={submit} className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Customer payments will land in this account directly via Paystack.
+          Azayon doesn't hold or touch your money.
+        </p>
+        <Input
+          label="Business name (as it appears on your bank account)"
+          value={businessName}
+          onChange={(e) => setBusinessName(e.target.value)}
+          required
+        />
+        <Select
+          label="Bank"
+          value={bankCode}
+          onChange={(e) => setBankCode(e.target.value)}
+          disabled={banksLoading}
+          options={[
+            { value: '', label: banksLoading ? 'Loading banks…' : 'Select your bank…' },
+            ...banks.map((b) => ({ value: b.code, label: b.name })),
+          ]}
+        />
+        <Input
+          label="Account number"
+          inputMode="numeric"
+          placeholder="0123456789"
+          value={accountNumber}
+          onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
+          required
+        />
+        <p className="text-xs text-muted-foreground">
+          We'll verify the account with your bank before connecting. Only the last 4 digits are stored on Azayon.
+        </p>
+        <div className="flex gap-3 pt-2">
+          <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+          <Button type="submit" className="flex-1" loading={isPending}>Verify & connect</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function PaymentsTab({ org, isAdmin }) {
+  const { data, isLoading } = usePaystackSubaccount();
+  const { mutate: disconnect, isPending: disconnecting } = useDisconnectSubaccount();
+  const [showConnect, setShowConnect] = useState(false);
+  const [showConfirmDisconnect, setShowConfirmDisconnect] = useState(false);
+
+  const subaccount = data?.subaccount;
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold">Online payments</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Connect your bank account so customers can pay your invoices online.
+          Funds settle directly to you — Azayon never holds them.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <Card className="p-8 flex justify-center"><div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></Card>
+      ) : subaccount?.code ? (
+        <Card className="p-5">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">Connected</p>
+                <p className="text-sm mt-0.5">
+                  {subaccount.bankName || 'Bank'} ····{subaccount.accountLast4}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {subaccount.businessName} · connected {subaccount.connectedAt ? new Date(subaccount.connectedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
+                </p>
+              </div>
+            </div>
+            {isAdmin && (
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setShowConnect(true)}>
+                  Replace
+                </Button>
+                <Button
+                  variant="outline" size="sm"
+                  className="text-red-500 hover:bg-red-50 hover:border-red-200"
+                  onClick={() => setShowConfirmDisconnect(true)}
+                >
+                  Disconnect
+                </Button>
+              </div>
+            )}
+          </div>
+        </Card>
+      ) : (
+        <Card className="p-5 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+              <CreditCard className="w-5 h-5 text-muted-foreground" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold">No bank account connected</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Customers can't pay invoices online until you connect. They can still pay you offline (M-Pesa, cash, bank transfer) and you can mark invoices as paid manually.
+              </p>
+            </div>
+          </div>
+          {isAdmin && (
+            <Button onClick={() => setShowConnect(true)}>
+              <CreditCard className="w-4 h-4" /> Connect bank account
+            </Button>
+          )}
+          {!isAdmin && (
+            <p className="text-xs text-muted-foreground">Only an admin can connect the bank account.</p>
+          )}
+        </Card>
+      )}
+
+      <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/40 border border-border">
+        <Zap className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <p><strong>How it works:</strong> Powered by Paystack Subaccounts. Each transaction settles to your bank on Paystack's standard schedule (T+1 working day in Kenya).</p>
+          <p>Paystack's standard transaction fee applies (deducted on settlement). Azayon takes no cut.</p>
+        </div>
+      </div>
+
+      <ConnectBankModal open={showConnect} onClose={() => setShowConnect(false)} org={org} />
+
+      <Modal open={showConfirmDisconnect} onClose={() => setShowConfirmDisconnect(false)} title="Disconnect bank account?">
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Existing invoices will lose their "Pay online" button. Customers can still see, download, and pay you offline. You can reconnect anytime.
+          </p>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setShowConfirmDisconnect(false)}>Cancel</Button>
+            <Button
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white border-0"
+              loading={disconnecting}
+              onClick={() => { disconnect(); setShowConfirmDisconnect(false); }}
+            >
+              Disconnect
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 // ─── EMAIL TEMPLATES TAB ──────────────────────────────────────────────────────
 
 const TEMPLATE_CATEGORIES = [
@@ -1663,9 +1841,13 @@ export default function Settings() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
 
-  // Default to billing tab if coming from a payment redirect
-  const defaultTab = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'billing'
-    ? 'billing' : 'general';
+  // Honor any valid `?tab=` value from the URL so links can deep-link
+  // (e.g. "Connect bank" banner → /settings?tab=payments)
+  const VALID_TABS = ['general', 'billing', 'pipelines', 'payments', 'templates', 'fields', 'api', 'team', 'profile'];
+  const tabFromUrl = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('tab')
+    : null;
+  const defaultTab = VALID_TABS.includes(tabFromUrl) ? tabFromUrl : 'general';
   const [activeTab, setActiveTab] = useState(defaultTab);
 
   useEffect(() => {
@@ -1713,6 +1895,7 @@ export default function Settings() {
     { id: 'general', label: 'General' },
     ...(user?.role === 'admin' ? [{ id: 'billing', label: 'Billing' }] : []),
     ...(user?.role === 'admin' ? [{ id: 'pipelines', label: 'Pipelines' }] : []),
+    { id: 'payments', label: 'Payments' },
     { id: 'templates', label: 'Email templates' },
     { id: 'fields', label: 'Custom fields' },
     { id: 'api', label: 'API & n8n' },
@@ -1740,6 +1923,8 @@ export default function Settings() {
       {activeTab === 'billing' && <BillingTab />}
 
       {activeTab === 'pipelines' && <PipelinesTab />}
+
+      {activeTab === 'payments' && org && <PaymentsTab org={org} isAdmin={user?.role === 'admin'} />}
 
       {activeTab === 'templates' && <EmailTemplatesTab />}
 

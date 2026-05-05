@@ -22,6 +22,7 @@ export default function PublicDocument() {
   const { token } = useParams();
   const [searchParams] = useSearchParams();
   const [doc, setDoc]         = useState(null);
+  const [orgHasOnlinePayment, setOrgHasOnlinePayment] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [paying, setPaying]   = useState(false);
@@ -34,7 +35,11 @@ export default function PublicDocument() {
   useEffect(() => {
     let alive = true;
     publicApi.get(`/public/documents/${token}`)
-      .then((res) => { if (alive) setDoc(res.data.document); })
+      .then((res) => {
+        if (!alive) return;
+        setDoc(res.data.document);
+        setOrgHasOnlinePayment(!!res.data.orgHasOnlinePayment);
+      })
       .catch((err) => { if (alive) setError(err.response?.data?.error || 'Document not found'); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
@@ -234,7 +239,7 @@ export default function PublicDocument() {
         </div>
 
         {/* Email input — only when the invoice has no email on file and customer wants to pay online */}
-        {isInvoice && !isPaid && !justPaid && !doc.customerEmail && (
+        {isInvoice && !isPaid && !justPaid && orgHasOnlinePayment && !doc.customerEmail && (
           <div className="bg-card border border-border rounded-2xl p-4 space-y-2">
             <label htmlFor="payerEmail" className="text-sm font-medium">
               Email for receipt
@@ -270,15 +275,26 @@ export default function PublicDocument() {
           >
             <Download className="w-4 h-4" /> Download PDF
           </a>
-          {isInvoice && !isPaid && !justPaid && (
+          {isInvoice && !isPaid && !justPaid && orgHasOnlinePayment && (
             <Button onClick={handlePay} loading={paying} className="flex-1">
               <CreditCard className="w-4 h-4" /> Pay {formatCurrency(doc.total, doc.currency)}
             </Button>
           )}
         </div>
 
+        {/* When the merchant hasn't enabled online payment, tell the customer
+            so they don't sit waiting for a button that won't appear. */}
+        {isInvoice && !isPaid && !justPaid && !orgHasOnlinePayment && (
+          <p className="text-xs text-muted-foreground text-center">
+            Online payment isn't set up for this invoice. Please contact{' '}
+            <span className="font-medium text-foreground">{doc.fromBusinessName}</span>
+            {doc.fromEmail ? <> at <a href={`mailto:${doc.fromEmail}`} className="text-primary hover:underline">{doc.fromEmail}</a></> : null}
+            {doc.fromPhone ? <> or {doc.fromPhone}</> : null} to arrange payment.
+          </p>
+        )}
+
         <p className="text-xs text-muted-foreground text-center">
-          Powered by Azayon · M-Pesa, cards & bank transfer accepted
+          Powered by Azayon{orgHasOnlinePayment ? ' · M-Pesa, cards & bank transfer accepted' : ''}
         </p>
       </div>
     </div>

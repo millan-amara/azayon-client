@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, FileText, Search, Eye, Trash2, Download } from 'lucide-react';
-import { useDocuments, useDeleteDocument } from '@/hooks/useData';
+import { Plus, FileText, Search, Eye, Trash2, Download, CreditCard, X } from 'lucide-react';
+import { useDocuments, useDeleteDocument, usePaystackSubaccount } from '@/hooks/useData';
 import { useRole } from '@/hooks/useRole';
+import { useAuth } from '@/context/AuthContext';
 import { Button, Card, EmptyState, Spinner, Modal } from '@/components/ui';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
 
@@ -17,6 +18,54 @@ const STATUS_COLORS = {
   expired:   'bg-gray-100 text-gray-600',
   cancelled: 'bg-gray-100 text-gray-500',
 };
+
+// Nudge for admins: connect a Paystack Subaccount so customers can pay invoices
+// online. Hidden when already connected, dismissible, per-user-per-browser.
+function OnlinePaymentBanner() {
+  const { user } = useAuth();
+  const { data, isLoading } = usePaystackSubaccount();
+  const [dismissed, setDismissed] = useState(() =>
+    typeof window !== 'undefined' && localStorage.getItem('paymentsBannerDismissed') === '1'
+  );
+
+  if (user?.role !== 'admin') return null;
+  if (isLoading) return null;
+  if (data?.subaccount?.code) return null;
+  if (dismissed) return null;
+
+  const dismiss = () => {
+    setDismissed(true);
+    localStorage.setItem('paymentsBannerDismissed', '1');
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-primary/20 bg-primary/5">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+          <CreditCard className="w-4 h-4 text-primary" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Get paid faster — connect your bank account</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Customers will be able to pay your invoices online. Funds settle straight to your bank, no waiting around.
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <Link to="/settings?tab=payments">
+          <Button size="sm">Connect bank</Button>
+        </Link>
+        <button
+          onClick={dismiss}
+          className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground transition-colors"
+          aria-label="Dismiss"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function Documents() {
   const navigate = useNavigate();
@@ -44,6 +93,8 @@ export default function Documents() {
 
   return (
     <div className="space-y-4 max-w-6xl">
+      <OnlinePaymentBanner />
+
       {/* Tabs */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex gap-1 p-0.5 rounded-lg border border-border bg-muted/30">
@@ -70,7 +121,7 @@ export default function Documents() {
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative flex-1 min-w-50">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             className="w-full h-9 pl-9 pr-3 rounded-lg border border-border bg-background text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
