@@ -1,28 +1,44 @@
 import { Routes, Route, Navigate, useRouteError } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { SocketProvider } from '@/context/SocketContext';
 import { PlanProvider } from '@/context/PlanContext';
 import { UpgradeProvider } from '@/components/Upgrade';
 import Layout from '@/components/layout/Layout';
+
+// ── Eager: auth + the pages reps live in (Pipeline, Contacts, Tasks) ──
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
-import VerifyEmail from '@/pages/VerifyEmail';
-import AcceptInvite from '@/pages/AcceptInvite';
-import Dashboard from '@/pages/Dashboard';
 import Contacts from '@/pages/Contacts';
-import ContactDetail from '@/pages/ContactDetail';
 import Pipeline from '@/pages/Pipeline';
-import DealDetail from '@/pages/DealDetail';
 import Tasks from '@/pages/Tasks';
-import Automations from '@/pages/Automations';
-import Settings from '@/pages/Settings';
-import Documents from '@/pages/Documents';
-import DocumentEditor from '@/pages/DocumentEditor';
-import PublicDocument from '@/pages/PublicDocument';
-import Reports from '@/pages/Reports';
-import Customers from '@/pages/Customers';
+
+// ── Lazy: heavy or rarely-visited routes split into separate chunks ──
+// Dashboard pulls in recharts (~150kB gz), the single heaviest dep — keeping
+// it lazy means recharts only ships when Dashboard or Reports is opened.
+const Dashboard       = lazy(() => import('@/pages/Dashboard'));
+const ContactDetail   = lazy(() => import('@/pages/ContactDetail'));
+const DealDetail      = lazy(() => import('@/pages/DealDetail'));
+const VerifyEmail     = lazy(() => import('@/pages/VerifyEmail'));
+const AcceptInvite    = lazy(() => import('@/pages/AcceptInvite'));
+const Automations     = lazy(() => import('@/pages/Automations'));
+const Settings        = lazy(() => import('@/pages/Settings'));
+const Documents       = lazy(() => import('@/pages/Documents'));
+const DocumentEditor  = lazy(() => import('@/pages/DocumentEditor'));
+const PublicDocument  = lazy(() => import('@/pages/PublicDocument'));
+const Reports         = lazy(() => import('@/pages/Reports'));
+const Customers       = lazy(() => import('@/pages/Customers'));
+
+// Centered spinner while a lazy chunk is loading.
+function RouteFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 function RouteError() {
   const error = useRouteError();
@@ -55,6 +71,7 @@ function PublicRoute({ children }) {
 
 function AppRoutes() {
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
       <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
       <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
@@ -90,6 +107,7 @@ function AppRoutes() {
       </Route>
       <Route path="*" element={<Navigate to="/pipeline" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 

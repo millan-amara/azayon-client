@@ -1,13 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
-  ArrowLeft, Plus, Trash2, Send, Download, CheckCircle2, MessageCircle,
+  ArrowLeft, ArrowRight, Plus, Trash2, Send, Download, CheckCircle2, MessageCircle,
   XCircle, FileText, Mail, Edit2,
 } from 'lucide-react';
 import {
   useDocument, useCreateDocument, useUpdateDocument, useDeleteDocument,
   useSendDocument, useMarkDocumentPaid, useAcceptQuote, useDeclineQuote,
-  useContacts, useEmailTemplates,
+  useContacts, useEmailTemplates, useConvertQuoteToInvoice,
 } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/hooks/useRole';
@@ -303,6 +303,7 @@ function ViewMode({ doc, onEdit }) {
   const [showDelete, setShowDelete]   = useState(false);
   const { mutate: accept }            = useAcceptQuote();
   const { mutate: deleteDoc }         = useDeleteDocument();
+  const { mutateAsync: convertToInvoice, isPending: converting } = useConvertQuoteToInvoice();
   const { canWrite }                  = useRole();
 
   const isInvoice = doc.type === 'invoice';
@@ -317,6 +318,19 @@ function ViewMode({ doc, onEdit }) {
       toast.error('Failed to download PDF');
     }
   };
+
+  const handleConvertToInvoice = async () => {
+    const data = await convertToInvoice(doc._id);
+    if (data?.document?._id) navigate(`/documents/${data.document._id}`);
+  };
+
+  // Quotes can be converted to an invoice once they're sent/viewed/accepted
+  // (not while still draft, not after they were declined/expired/cancelled),
+  // and not if they've already been converted.
+  const canConvertToInvoice =
+    doc.type === 'quote' &&
+    ['sent', 'viewed', 'accepted'].includes(doc.status) &&
+    !doc.convertedToInvoiceId;
 
   return (
     <div className="space-y-4 max-w-4xl">
@@ -358,6 +372,20 @@ function ViewMode({ doc, onEdit }) {
                 <XCircle className="w-4 h-4" /> Decline
               </Button>
             </>
+          )}
+          {canWrite && canConvertToInvoice && (
+            <Button size="sm" onClick={handleConvertToInvoice} loading={converting}>
+              <ArrowRight className="w-4 h-4" /> Convert to invoice
+            </Button>
+          )}
+          {!isInvoice && doc.convertedToInvoiceId && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate(`/documents/${doc.convertedToInvoiceId}`)}
+            >
+              <ArrowRight className="w-4 h-4" /> View invoice
+            </Button>
           )}
           {canWrite && isDraft && (
             <Button

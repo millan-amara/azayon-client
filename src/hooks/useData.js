@@ -486,6 +486,24 @@ export function useDeleteAutomation() {
   });
 }
 
+export function useTestAutomation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.post(`/automations/${id}/test`).then((r) => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['automations'] });
+      if (!data.ran) {
+        toast(data.reason || 'Automation did not run', { icon: '⚠️' });
+      } else if (data.status === 'success') {
+        toast.success('Test run completed successfully');
+      } else {
+        toast.error('Test run had failures — check the run history');
+      }
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Test run failed'),
+  });
+}
+
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
 
 export function useNotifications(params = {}) {
@@ -708,6 +726,22 @@ export function useDeclineQuote() {
       qc.invalidateQueries({ queryKey: ['document', id] });
       toast.success('Quote declined');
     },
+  });
+}
+
+export function useConvertQuoteToInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.post(`/documents/${id}/convert-to-invoice`).then((r) => r.data),
+    onSuccess: (data, id) => {
+      qc.invalidateQueries({ queryKey: ['documents'] });
+      qc.invalidateQueries({ queryKey: ['document', id] });
+      qc.invalidateQueries({ queryKey: ['document', data?.document?._id] });
+      toast.success(data?.alreadyConverted
+        ? 'Already converted — opening the existing invoice'
+        : `Invoice ${data?.document?.number} created`);
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Conversion failed'),
   });
 }
 

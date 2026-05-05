@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import {
   Zap, Plus, ToggleLeft, ToggleRight, Trash2, Play, Clock,
-  ChevronDown, AlertCircle, CheckCircle2, Brain, Search, Rocket, Pencil,
+  ChevronDown, AlertCircle, CheckCircle2, Brain, Search, Rocket, Pencil, XCircle,
 } from 'lucide-react';
 import {
   useAutomations, useAutomationTemplates,
   useCreateAutomation, useUpdateAutomation, useToggleAutomation, useDeleteAutomation,
-  useTeam, usePipelines,
+  useTestAutomation, useTeam, usePipelines,
 } from '@/hooks/useData';
 import { useRole } from '@/hooks/useRole';
 import { usePlan } from '@/context/PlanContext';
@@ -28,12 +28,20 @@ const TRIGGER_LABELS = {
 const ACTION_LABELS = {
   send_email: '✉️ Send an email',
   send_webhook: '🔗 Send to n8n / webhook',
+  send_whatsapp: '💬 Send WhatsApp message',
   create_task: '✅ Create follow-up task',
   create_deal: '💼 Open new deal',
   assign_to_user: '👤 Assign to team member',
   add_tag: '🏷️ Add tag to contact',
   update_deal_stage: '📋 Move deal to stage',
 };
+
+const WHATSAPP_TEMPLATES = [
+  { value: 'deal_inactive',  label: 'Deal cold ping (uses {{deal.title}})' },
+  { value: 'deal_assigned',  label: 'Deal assigned (uses {{deal.title}})' },
+  { value: 'task_reminder',  label: 'Task reminder (uses {{task.title}}, due date)' },
+  { value: 'task_assigned',  label: 'Task assigned (uses {{task.title}}, due date)' },
+];
 
 // ─── TEMPLATE CARD ────────────────────────────────────────────────────────────
 
@@ -281,6 +289,7 @@ function ActivateTemplateModal({ open, onClose, onSuccess, template, hasDuplicat
                   onChange={(e) => setConfig(c => ({ ...c, pipelineId: e.target.value, stageId: '' }))}
                   options={[{ value: '', label: 'Select pipeline...' }, ...(pipelinesData?.pipelines || []).map((p) => ({ value: p._id, label: p.name }))]}
                 />
+                <RestrictedPipelineNotice pipeline={selectedPipeline} action="create_deal" />
                 {selectedPipeline && (
                   <Select
                     label="Starting stage *"
@@ -333,6 +342,27 @@ function ActivateTemplateModal({ open, onClose, onSuccess, template, hasDuplicat
 
 // ─── ACTION CONFIG (for custom builder) ──────────────────────────────────────
 
+// Warns when an action targets a restricted pipeline. Triggers like
+// contact.created can fire for any user, but a restricted pipeline is only
+// visible to its allowedUsers — so a sales rep could end up creating (or
+// moving) a deal they then can't see. Admins decide whether that's intended.
+function RestrictedPipelineNotice({ pipeline, action }) {
+  if (!pipeline || pipeline.visibility !== 'restricted') return null;
+  const count = (pipeline.allowedUsers || []).length;
+  const verb = action === 'create_deal'
+    ? 'Deals created here will only be visible to'
+    : 'After this move, the deal will only be visible to';
+  return (
+    <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200">
+      <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+      <p className="text-xs text-amber-800">
+        <span className="font-medium">"{pipeline.name}" is restricted</span> to {count} user{count === 1 ? '' : 's'} (plus admins).{' '}
+        {verb} those users — if this automation fires for someone else, they won't see the result.
+      </p>
+    </div>
+  );
+}
+
 function ActionConfig({ actionType, config, onChange, users, pipelines }) {
   const update = (key, value) => onChange({ ...config, [key]: value });
   const selectedPipeline = pipelines.find((p) => p._id === config.pipelineId);
@@ -362,6 +392,25 @@ function ActionConfig({ actionType, config, onChange, users, pipelines }) {
         </div>
       );
 
+    case 'send_whatsapp':
+      return (
+        <div className="space-y-3">
+          <Select
+            label="WhatsApp template *"
+            value={config.whatsappTemplate || ''}
+            onChange={(e) => update('whatsappTemplate', e.target.value)}
+            options={[{ value: '', label: 'Select template...' }, ...WHATSAPP_TEMPLATES]}
+          />
+          <Select
+            label="Send to"
+            value={config.whatsappTo || 'assigned_user'}
+            onChange={(e) => update('whatsappTo', e.target.value)}
+            options={[{ value: 'assigned_user', label: 'Assigned rep' }, { value: 'contact', label: 'Contact' }]}
+          />
+          <p className="text-xs text-muted-foreground">Recipient must have a phone number on file. WhatsApp templates are pre-approved by Meta.</p>
+        </div>
+      );
+
     case 'create_task':
       return (
         <div className="space-y-3">
@@ -385,6 +434,7 @@ function ActionConfig({ actionType, config, onChange, users, pipelines }) {
           <Input label="Deal title" value={config.dealTitle || '{{contact.firstName}} {{contact.lastName}} — New opportunity'} onChange={(e) => update('dealTitle', e.target.value)} />
           <Select label="Pipeline *" value={config.pipelineId || ''} onChange={(e) => onChange({ ...config, pipelineId: e.target.value, stageId: '' })}
             options={[{ value: '', label: 'Select pipeline...' }, ...pipelines.map((p) => ({ value: p._id, label: p.name }))]} />
+          <RestrictedPipelineNotice pipeline={selectedPipeline} action="create_deal" />
           {selectedPipeline && (
             <Select label="Starting stage *" value={config.stageId || ''} onChange={(e) => update('stageId', e.target.value)}
               options={[{ value: '', label: 'Select stage...' }, ...selectedPipeline.stages.filter((s) => !s.isWon && !s.isLost).map((s) => ({ value: s._id, label: s.name }))]} />
@@ -410,6 +460,7 @@ function ActionConfig({ actionType, config, onChange, users, pipelines }) {
         <div className="space-y-3">
           <Select label="Pipeline *" value={config.pipelineId || ''} onChange={(e) => onChange({ ...config, pipelineId: e.target.value, stageId: '', stageName: '' })}
             options={[{ value: '', label: 'Select pipeline...' }, ...pipelines.map((p) => ({ value: p._id, label: p.name }))]} />
+          <RestrictedPipelineNotice pipeline={selectedPipeline} action="update_deal_stage" />
           {selectedPipeline && (
             <Select label="Move deal to stage *" value={config.stageId || ''} onChange={(e) => {
               const stage = selectedPipeline.stages.find((s) => s._id === e.target.value);
@@ -425,9 +476,174 @@ function ActionConfig({ actionType, config, onChange, users, pipelines }) {
   }
 }
 
+// Fields available for conditions, scoped to the trigger so users don't pick a
+// field that won't be in scope at runtime (e.g. `deal.value` on a
+// contact.created trigger). The engine resolves dotted paths, so the right-hand
+// list maps directly to what `checkConditions` walks.
+const CONDITION_FIELDS = {
+  contact: [
+    { value: 'contact.firstName', label: 'Contact: first name' },
+    { value: 'contact.lastName',  label: 'Contact: last name' },
+    { value: 'contact.email',     label: 'Contact: email' },
+    { value: 'contact.company',   label: 'Contact: company' },
+    { value: 'contact.status',    label: 'Contact: status' },
+    { value: 'contact.source',    label: 'Contact: source' },
+    { value: 'contact.tags',      label: 'Contact: tags' },
+  ],
+  deal: [
+    { value: 'deal.title',     label: 'Deal: title' },
+    { value: 'deal.stageName', label: 'Deal: stage name' },
+    { value: 'deal.value',     label: 'Deal: value' },
+    { value: 'deal.status',    label: 'Deal: status' },
+    { value: 'deal.tags',      label: 'Deal: tags' },
+  ],
+  task: [
+    { value: 'task.title',    label: 'Task: title' },
+    { value: 'task.priority', label: 'Task: priority' },
+    { value: 'task.type',     label: 'Task: type' },
+  ],
+};
+
+function getAvailableFields(triggerType) {
+  if (!triggerType) return [];
+  const prefix = triggerType.split('.')[0];
+  // deal.* triggers also have access to the linked contact via populated refs;
+  // task.overdue has both contact and deal in scope.
+  if (prefix === 'deal')    return [...CONDITION_FIELDS.deal, ...CONDITION_FIELDS.contact];
+  if (prefix === 'contact') return CONDITION_FIELDS.contact;
+  if (prefix === 'task')    return [...CONDITION_FIELDS.task, ...CONDITION_FIELDS.contact, ...CONDITION_FIELDS.deal];
+  return [];
+}
+
+const CONDITION_OPERATORS = [
+  { value: 'equals',       label: 'equals' },
+  { value: 'not_equals',   label: 'does not equal' },
+  { value: 'contains',     label: 'contains' },
+  { value: 'greater_than', label: 'is greater than' },
+  { value: 'less_than',    label: 'is less than' },
+  { value: 'exists',       label: 'is set' },
+];
+
+function ConditionsEditor({ conditions, onChange, triggerType }) {
+  const fields = getAvailableFields(triggerType);
+  const update = (idx, next) => onChange(conditions.map((c, i) => (i === idx ? next : c)));
+  const remove = (idx) => onChange(conditions.filter((_, i) => i !== idx));
+  const add = () => onChange([...conditions, { field: fields[0]?.value || '', operator: 'equals', value: '' }]);
+
+  return (
+    <div className="space-y-2">
+      {conditions.map((cond, idx) => (
+        <div key={idx} className="border border-border rounded-lg p-2.5 bg-muted/20 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">
+              {idx === 0 ? 'Only when' : 'AND'}
+            </span>
+            <button type="button" onClick={() => remove(idx)}
+              className="text-xs text-red-600 hover:text-red-700 inline-flex items-center gap-1">
+              <Trash2 className="w-3 h-3" /> Remove
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Select
+              value={cond.field || ''}
+              onChange={(e) => update(idx, { ...cond, field: e.target.value })}
+              options={[{ value: '', label: 'Select field...' }, ...fields]}
+            />
+            <Select
+              value={cond.operator || 'equals'}
+              onChange={(e) => update(idx, { ...cond, operator: e.target.value })}
+              options={CONDITION_OPERATORS}
+            />
+          </div>
+          {cond.operator !== 'exists' && (
+            <Input
+              placeholder="Value"
+              value={cond.value ?? ''}
+              onChange={(e) => update(idx, { ...cond, value: e.target.value })}
+            />
+          )}
+        </div>
+      ))}
+      <button type="button" onClick={add}
+        disabled={fields.length === 0}
+        className="w-full p-2.5 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-muted/50 transition-colors inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+        <Plus className="w-3.5 h-3.5" /> Add filter
+      </button>
+    </div>
+  );
+}
+
+// ─── MULTI-ACTION EDITOR ──────────────────────────────────────────────────────
+// Shared between CustomBuilderModal and EditAutomationModal so multi-action
+// edits behave identically in both.
+function MultiActionEditor({ actions, onChange, users, pipelines }) {
+  const updateAction = (idx, next) => {
+    onChange(actions.map((a, i) => (i === idx ? next : a)));
+  };
+  const removeAction = (idx) => {
+    onChange(actions.filter((_, i) => i !== idx));
+  };
+  const addAction = () => {
+    onChange([...actions, { type: 'send_webhook', config: {} }]);
+  };
+
+  return (
+    <div className="space-y-3">
+      {actions.map((action, idx) => (
+        <div key={idx} className="border border-border rounded-lg p-3 space-y-3 bg-muted/20">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">Action {idx + 1}</span>
+            {actions.length > 1 && (
+              <button type="button" onClick={() => removeAction(idx)}
+                className="text-xs text-red-600 hover:text-red-700 inline-flex items-center gap-1">
+                <Trash2 className="w-3 h-3" /> Remove
+              </button>
+            )}
+          </div>
+          <Select
+            label="Action type"
+            value={action.type}
+            onChange={(e) => updateAction(idx, { type: e.target.value, config: {} })}
+            options={Object.entries(ACTION_LABELS).map(([value, label]) => ({ value, label }))}
+          />
+          <ActionConfig
+            actionType={action.type}
+            config={action.config}
+            onChange={(newConfig) => updateAction(idx, { ...action, config: newConfig })}
+            users={users}
+            pipelines={pipelines}
+          />
+        </div>
+      ))}
+      <button type="button" onClick={addAction}
+        className="w-full p-3 rounded-lg border border-dashed border-border text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-muted/50 transition-colors inline-flex items-center justify-center gap-2">
+        <Plus className="w-4 h-4" /> Add another action
+      </button>
+    </div>
+  );
+}
+
+// Validates one action's config based on its type. Returns `null` when valid,
+// or a short string explaining what's missing. Mirrors the server-side
+// requirements in automations/engine.js.
+function actionIsInvalid(action) {
+  const c = action.config || {};
+  switch (action.type) {
+    case 'send_webhook':     return c.url ? null : 'Webhook URL';
+    case 'send_email':       return c.subject && c.body ? null : 'Email subject and body';
+    case 'send_whatsapp':    return c.whatsappTemplate ? null : 'WhatsApp template';
+    case 'create_task':      return c.taskTitle ? null : 'Task title';
+    case 'create_deal':      return c.pipelineId && c.stageId ? null : 'Pipeline and stage';
+    case 'assign_to_user':   return c.userId ? null : 'User to assign to';
+    case 'add_tag':          return c.tag ? null : 'Tag';
+    case 'update_deal_stage': return c.pipelineId && c.stageId ? null : 'Pipeline and stage';
+    default: return null;
+  }
+}
+
 // ─── CUSTOM BUILDER MODAL ─────────────────────────────────────────────────────
 
-function CustomBuilderModal({ open, onClose }) {
+function CustomBuilderModal({ open, onClose, activeTriggers = [] }) {
   const { mutateAsync, isPending } = useCreateAutomation();
   const { data: teamData } = useTeam();
   const { data: pipelinesData } = usePipelines();
@@ -436,30 +652,48 @@ function CustomBuilderModal({ open, onClose }) {
     name: '',
     triggerType: 'contact.created',
     inactiveDays: 3,
-    actionType: 'send_webhook',
-    actionConfig: {},
+    actions: [{ type: 'send_webhook', config: {} }],
+    conditions: [],
+    confirmedDuplicate: false,
   });
 
   const users = (teamData?.users || []).filter((u) => u.isActive !== false);
   const pipelines = pipelinesData?.pipelines || [];
 
+  const hasDuplicate = activeTriggers.includes(form.triggerType);
+  const showDuplicateBlock = hasDuplicate && !form.confirmedDuplicate;
+  const invalidAction = form.actions.map(actionIsInvalid).find(Boolean);
+
+  const reset = () => {
+    setStep(1);
+    setForm({
+      name: '', triggerType: 'contact.created', inactiveDays: 3,
+      actions: [{ type: 'send_webhook', config: {} }],
+      conditions: [],
+      confirmedDuplicate: false,
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (form.actions.length === 0) return;
     const triggerConfig = form.triggerType === 'deal.inactive' ? { inactiveDays: parseInt(form.inactiveDays) } : {};
+    // Strip blank conditions — easy to leave a partially-filled row behind.
+    const conditions = form.conditions.filter((c) => c.field && c.operator);
     await mutateAsync({
       name: form.name,
       trigger: { type: form.triggerType, config: triggerConfig },
-      actions: [{ type: form.actionType, config: form.actionConfig }],
+      conditions,
+      actions: form.actions,
     });
     onClose();
-    setStep(1);
-    setForm({ name: '', triggerType: 'contact.created', inactiveDays: 3, actionType: 'send_webhook', actionConfig: {} });
+    reset();
   };
 
-  const steps = ['Trigger', 'Action', 'Review'];
+  const steps = ['Trigger', 'Actions', 'Review'];
 
   return (
-    <Modal open={open} onClose={onClose} title="Build custom automation">
+    <Modal open={open} onClose={() => { onClose(); reset(); }} title="Build custom automation">
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Step indicator */}
         <div className="flex items-center gap-1 mb-2">
@@ -490,7 +724,8 @@ function CustomBuilderModal({ open, onClose }) {
               <label className="text-sm font-medium">When this happens</label>
               <div className="space-y-1.5">
                 {Object.entries(TRIGGER_LABELS).map(([value, label]) => (
-                  <button key={value} type="button" onClick={() => setForm(f => ({ ...f, triggerType: value }))}
+                  <button key={value} type="button"
+                    onClick={() => setForm(f => ({ ...f, triggerType: value, confirmedDuplicate: false }))}
                     className={cn('w-full p-3 rounded-lg border text-left text-sm transition-all',
                       form.triggerType === value ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/40 hover:bg-muted/50'
                     )}>
@@ -502,30 +737,42 @@ function CustomBuilderModal({ open, onClose }) {
                 <Input label="Inactive for how many days?" type="number" min="1" value={form.inactiveDays}
                   onChange={(e) => setForm(f => ({ ...f, inactiveDays: e.target.value }))} />
               )}
+              {showDuplicateBlock && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
+                  <div className="flex gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-amber-800 mb-1">You already have an active automation on this trigger</p>
+                      <p className="text-xs text-amber-700 mb-2">Both will fire at the same time, which may cause duplicate tasks or emails. Continue only if that's intentional.</p>
+                      <button type="button" onClick={() => setForm(f => ({ ...f, confirmedDuplicate: true }))}
+                        className="text-xs font-medium text-amber-800 underline">
+                        I understand — continue anyway
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {step === 2 && (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Then do this</label>
-              <div className="space-y-1.5">
-                {Object.entries(ACTION_LABELS).map(([value, label]) => (
-                  <button key={value} type="button" onClick={() => setForm(f => ({ ...f, actionType: value, actionConfig: {} }))}
-                    className={cn('w-full p-3 rounded-lg border text-left text-sm transition-all',
-                      form.actionType === value ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/40 hover:bg-muted/50'
-                    )}>
-                    {label}
-                  </button>
-                ))}
-              </div>
+          <div className="space-y-5">
+            <div>
+              <label className="text-sm font-medium">Filters (optional)</label>
+              <p className="text-xs text-muted-foreground mt-0.5 mb-2">Only run when these are true. Leave empty to fire on every trigger.</p>
+              <ConditionsEditor
+                conditions={form.conditions}
+                onChange={(conditions) => setForm(f => ({ ...f, conditions }))}
+                triggerType={form.triggerType}
+              />
             </div>
             <div className="border-t border-border pt-4">
-              <ActionConfig
-                actionType={form.actionType}
-                config={form.actionConfig}
-                onChange={(newConfig) => setForm(f => ({ ...f, actionConfig: newConfig }))}
+              <label className="text-sm font-medium">Then do this</label>
+              <p className="text-xs text-muted-foreground mt-0.5 mb-3">Add one or more actions. They'll run in order each time the trigger fires.</p>
+              <MultiActionEditor
+                actions={form.actions}
+                onChange={(actions) => setForm(f => ({ ...f, actions }))}
                 users={users}
                 pipelines={pipelines}
               />
@@ -548,17 +795,35 @@ function CustomBuilderModal({ open, onClose }) {
                     {form.triggerType === 'deal.inactive' && <span className="text-xs text-muted-foreground"> (after {form.inactiveDays} days)</span>}
                   </div>
                 </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <Rocket className="w-3 h-3 text-green-600" />
+                {form.conditions.filter((c) => c.field).map((c, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+                      <AlertCircle className="w-3 h-3 text-amber-600" />
+                    </div>
+                    <div className="text-xs">
+                      <span className="text-muted-foreground">Only when: </span>
+                      <span>{c.field} {CONDITION_OPERATORS.find((o) => o.value === c.operator)?.label}{c.operator !== 'exists' ? ` "${c.value}"` : ''}</span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Then: </span>
-                    <span className="text-xs">{ACTION_LABELS[form.actionType]}</span>
+                ))}
+                {form.actions.map((a, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center shrink-0 mt-0.5">
+                      <Rocket className="w-3 h-3 text-green-600" />
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">Then: </span>
+                      <span className="text-xs">{ACTION_LABELS[a.type]}</span>
+                    </div>
                   </div>
-                </div>
+                ))}
               </div>
             </div>
+            {invalidAction && (
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                One of your actions is missing required config: <strong>{invalidAction}</strong>. Go back and fill it in.
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">You can edit or pause this automation at any time from the My automations tab.</p>
           </div>
         )}
@@ -568,11 +833,15 @@ function CustomBuilderModal({ open, onClose }) {
           {step > 1 && <Button type="button" variant="outline" onClick={() => setStep(s => s - 1)}>Back</Button>}
           <div className="flex-1" />
           {step < 3 ? (
-            <Button type="button" onClick={() => setStep(s => s + 1)} disabled={step === 1 && !form.name}>
+            <Button type="button" onClick={() => setStep(s => s + 1)}
+              disabled={
+                (step === 1 && (!form.name || showDuplicateBlock)) ||
+                (step === 2 && form.actions.length === 0)
+              }>
               Continue
             </Button>
           ) : (
-            <Button type="submit" loading={isPending}>Create automation</Button>
+            <Button type="submit" loading={isPending} disabled={!!invalidAction}>Create automation</Button>
           )}
         </div>
       </form>
@@ -601,20 +870,30 @@ function EditAutomationModal({ open, onClose, automation }) {
     inactiveDays: automation.trigger?.config?.inactiveDays || 3,
     triggerPipelineId: existingPipeline?._id || '',
     triggerStageId: existingStage?._id || '',
-    actionType: automation.actions?.[0]?.type || 'send_webhook',
-    actionConfig: automation.actions?.[0]?.config || {},
+    actions: automation.actions?.length
+      ? automation.actions.map((a) => ({ type: a.type, config: a.config || {} }))
+      : [{ type: 'send_webhook', config: {} }],
+    // The stage-filter dropdown owns the deal.stageName=equals condition, so
+    // we exclude it here to avoid a duplicate row in the conditions UI.
+    // Everything else is user-defined and editable.
+    conditions: (automation.conditions || []).filter(
+      (c) => !(c.field === 'deal.stageName' && c.operator === 'equals')
+    ),
   });
 
   const users = (teamData?.users || []).filter((u) => u.isActive !== false);
   const pipelines = pipelinesData?.pipelines || [];
   const selectedTriggerPipeline = pipelines.find((p) => p._id === form.triggerPipelineId);
+  const invalidAction = form.actions.map(actionIsInvalid).find(Boolean);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (form.actions.length === 0) return;
     const triggerConfig = form.triggerType === 'deal.inactive' ? { inactiveDays: parseInt(form.inactiveDays) } : {};
 
-    // Build conditions — add stage filter if stage_changed and a stage is selected
-    let conditions = automation.conditions?.filter((c) => !(c.field === 'deal.stageName' && c.operator === 'equals')) || [];
+    // Start from user-edited conditions (blank rows stripped), then re-attach
+    // the stage-filter special case if the trigger and pipeline/stage are set.
+    let conditions = form.conditions.filter((c) => c.field && c.operator);
     if (form.triggerType === 'deal.stage_changed' && form.triggerStageId && selectedTriggerPipeline) {
       const stage = selectedTriggerPipeline.stages.find((s) => s._id === form.triggerStageId);
       if (stage) conditions = [...conditions, { field: 'deal.stageName', operator: 'equals', value: stage.name }];
@@ -625,7 +904,7 @@ function EditAutomationModal({ open, onClose, automation }) {
       name: form.name,
       trigger: { type: form.triggerType, config: triggerConfig },
       conditions,
-      actions: [{ type: form.actionType, config: form.actionConfig }],
+      actions: form.actions,
     });
     onClose();
     setStep(1);
@@ -704,26 +983,22 @@ function EditAutomationModal({ open, onClose, automation }) {
         )}
 
         {step === 2 && (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Then do this</label>
-              <div className="space-y-1.5">
-                {Object.entries(ACTION_LABELS).map(([value, label]) => (
-                  <button key={value} type="button"
-                    onClick={() => setForm(f => ({ ...f, actionType: value, actionConfig: value === f.actionType ? f.actionConfig : {} }))}
-                    className={cn('w-full p-3 rounded-lg border text-left text-sm transition-all',
-                      form.actionType === value ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/40 hover:bg-muted/50'
-                    )}>
-                    {label}
-                  </button>
-                ))}
-              </div>
+          <div className="space-y-5">
+            <div>
+              <label className="text-sm font-medium">Filters (optional)</label>
+              <p className="text-xs text-muted-foreground mt-0.5 mb-2">Only run when these are true. Leave empty to fire on every trigger.</p>
+              <ConditionsEditor
+                conditions={form.conditions}
+                onChange={(conditions) => setForm(f => ({ ...f, conditions }))}
+                triggerType={form.triggerType}
+              />
             </div>
             <div className="border-t border-border pt-4">
-              <ActionConfig
-                actionType={form.actionType}
-                config={form.actionConfig}
-                onChange={(newConfig) => setForm(f => ({ ...f, actionConfig: newConfig }))}
+              <label className="text-sm font-medium">Then do this</label>
+              <p className="text-xs text-muted-foreground mt-0.5 mb-3">Add one or more actions. They'll run in order each time the trigger fires.</p>
+              <MultiActionEditor
+                actions={form.actions}
+                onChange={(actions) => setForm(f => ({ ...f, actions }))}
                 users={users}
                 pipelines={pipelines}
               />
@@ -749,17 +1024,35 @@ function EditAutomationModal({ open, onClose, automation }) {
                     )}
                   </div>
                 </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <Rocket className="w-3 h-3 text-green-600" />
+                {form.conditions.filter((c) => c.field).map((c, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+                      <AlertCircle className="w-3 h-3 text-amber-600" />
+                    </div>
+                    <div className="text-xs">
+                      <span className="text-muted-foreground">Only when: </span>
+                      <span>{c.field} {CONDITION_OPERATORS.find((o) => o.value === c.operator)?.label}{c.operator !== 'exists' ? ` "${c.value}"` : ''}</span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Then: </span>
-                    <span className="text-xs">{ACTION_LABELS[form.actionType]}</span>
+                ))}
+                {form.actions.map((a, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center shrink-0 mt-0.5">
+                      <Rocket className="w-3 h-3 text-green-600" />
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">Then: </span>
+                      <span className="text-xs">{ACTION_LABELS[a.type]}</span>
+                    </div>
                   </div>
-                </div>
+                ))}
               </div>
             </div>
+            {invalidAction && (
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                One of your actions is missing required config: <strong>{invalidAction}</strong>. Go back and fill it in.
+              </div>
+            )}
           </div>
         )}
 
@@ -767,15 +1060,146 @@ function EditAutomationModal({ open, onClose, automation }) {
           {step > 1 && <Button type="button" variant="outline" onClick={() => setStep(s => s - 1)}>Back</Button>}
           <div className="flex-1" />
           {step < 3 ? (
-            <Button type="button" onClick={() => setStep(s => s + 1)} disabled={step === 1 && !form.name}>
+            <Button type="button" onClick={() => setStep(s => s + 1)}
+              disabled={
+                (step === 1 && !form.name) ||
+                (step === 2 && form.actions.length === 0)
+              }>
               Continue
             </Button>
           ) : (
-            <Button type="submit" loading={isPending}>Save changes</Button>
+            <Button type="submit" loading={isPending} disabled={!!invalidAction}>Save changes</Button>
           )}
         </div>
       </form>
     </Modal>
+  );
+}
+
+// ─── AUTOMATION CARD (My automations tab) ────────────────────────────────────
+
+function AutomationCard({ auto, canWrite, onEdit, onToggle, onDelete }) {
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const { mutate: testRun, isPending: testing } = useTestAutomation();
+  const recentRuns = auto.recentRuns || [];
+  const lastRun = recentRuns[0];
+  const failed = lastRun?.status === 'failed' || lastRun?.status === 'partial';
+
+  const handleTest = () => {
+    const ok = confirm(
+      'Test runs use real data and fire real side effects: emails will send, ' +
+      'webhooks will hit your endpoints, tasks will be created. ' +
+      'Continue?'
+    );
+    if (ok) testRun(auto._id);
+  };
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+            <Zap className="w-4 h-4 text-primary" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-medium truncate">{auto.name}</p>
+              <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1',
+                auto.isActive ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'
+              )}>
+                {auto.isActive ? <><CheckCircle2 className="w-3 h-3" /> Active</> : 'Paused'}
+              </span>
+              {failed && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1 bg-red-100 text-red-700">
+                  <AlertCircle className="w-3 h-3" /> Last run {lastRun.status}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              When: {TRIGGER_LABELS[auto.trigger?.type] || auto.trigger?.type}
+            </p>
+            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+              {auto.runCount > 0 && <span className="flex items-center gap-1"><Play className="w-3 h-3" />{auto.runCount} runs</span>}
+              {auto.lastRunAt && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />Last ran {timeAgo(auto.lastRunAt)}</span>}
+              {recentRuns.length > 0 && (
+                <button onClick={() => setHistoryOpen((o) => !o)}
+                  className="flex items-center gap-1 hover:text-foreground transition-colors">
+                  <ChevronDown className={cn('w-3 h-3 transition-transform', historyOpen && 'rotate-180')} />
+                  {historyOpen ? 'Hide history' : `History (${recentRuns.length})`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {canWrite && (
+            <>
+              <button onClick={handleTest} disabled={testing}
+                className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
+                title="Test run (fires real side effects)">
+                <Play className="w-4 h-4" />
+              </button>
+              <button onClick={onEdit}
+                className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
+                title="Edit automation">
+                <Pencil className="w-4 h-4" />
+              </button>
+              <button onClick={onToggle}
+                className={cn('p-1.5 rounded-lg transition-colors',
+                  auto.isActive ? 'text-primary hover:bg-primary/10' : 'text-muted-foreground hover:bg-muted'
+                )} title={auto.isActive ? 'Pause' : 'Activate'}>
+                {auto.isActive ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
+              </button>
+              <button onClick={onDelete}
+                className="p-1.5 rounded-lg text-muted-foreground hover:bg-red-100 hover:text-red-600 transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {historyOpen && recentRuns.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-border space-y-2">
+          {recentRuns.map((run, i) => (
+            <div key={i} className="flex items-start gap-2 text-xs">
+              <div className="shrink-0 mt-0.5">
+                {run.status === 'success'
+                  ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                  : run.status === 'partial'
+                    ? <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                    : <XCircle className="w-3.5 h-3.5 text-red-600" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-muted-foreground">{timeAgo(run.at)}</span>
+                  <span className={cn('px-1.5 py-0.5 rounded text-[10px] uppercase font-medium',
+                    run.status === 'success' ? 'bg-green-100 text-green-700' :
+                    run.status === 'partial' ? 'bg-amber-100 text-amber-700' :
+                    'bg-red-100 text-red-700'
+                  )}>
+                    {run.status}
+                  </span>
+                  {run.isTest && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-medium bg-blue-100 text-blue-700">
+                      Test
+                    </span>
+                  )}
+                </div>
+                {run.error && (
+                  <p className="text-red-700 mt-0.5 break-words">{run.error}</p>
+                )}
+                {run.actions?.filter((a) => !a.success).map((a, j) => (
+                  <p key={j} className="text-red-700 mt-0.5 break-words">
+                    <span className="font-medium">{a.type}:</span> {a.error}
+                  </p>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -922,53 +1346,14 @@ export default function Automations() {
         ) : (
           <div className="space-y-3">
             {automations.map((auto) => (
-              <Card key={auto._id} className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 flex-1 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <Zap className="w-4 h-4 text-primary" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium truncate">{auto.name}</p>
-                        <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1',
-                          auto.isActive ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'
-                        )}>
-                          {auto.isActive ? <><CheckCircle2 className="w-3 h-3" /> Active</> : 'Paused'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        When: {TRIGGER_LABELS[auto.trigger?.type] || auto.trigger?.type}
-                      </p>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                        {auto.runCount > 0 && <span className="flex items-center gap-1"><Play className="w-3 h-3" />{auto.runCount} runs</span>}
-                        {auto.lastRunAt && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />Last ran {timeAgo(auto.lastRunAt)}</span>}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {canWrite && (
-                      <>
-                        <button onClick={() => setEditingAutomation(auto)}
-                          className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
-                          title="Edit automation">
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => toggle(auto._id)}
-                          className={cn('p-1.5 rounded-lg transition-colors',
-                            auto.isActive ? 'text-primary hover:bg-primary/10' : 'text-muted-foreground hover:bg-muted'
-                          )} title={auto.isActive ? 'Pause' : 'Activate'}>
-                          {auto.isActive ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
-                        </button>
-                        <button onClick={() => { if (confirm('Delete this automation?')) remove(auto._id); }}
-                          className="p-1.5 rounded-lg text-muted-foreground hover:bg-red-100 hover:text-red-600 transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </Card>
+              <AutomationCard
+                key={auto._id}
+                auto={auto}
+                canWrite={canWrite}
+                onEdit={() => setEditingAutomation(auto)}
+                onToggle={() => toggle(auto._id)}
+                onDelete={() => { if (confirm('Delete this automation?')) remove(auto._id); }}
+              />
             ))}
           </div>
         )
@@ -1045,7 +1430,11 @@ export default function Automations() {
         template={selectedTemplate}
         hasDuplicate={activeTriggers.includes(selectedTemplate?.trigger?.type)}
       />
-      <CustomBuilderModal open={showBuilder} onClose={() => setShowBuilder(false)} />
+      <CustomBuilderModal
+        open={showBuilder}
+        onClose={() => setShowBuilder(false)}
+        activeTriggers={activeTriggers}
+      />
       {editingAutomation && (
         <EditAutomationModal
           open={!!editingAutomation}

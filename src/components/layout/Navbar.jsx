@@ -86,7 +86,14 @@ function NotificationBell() {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-10 w-80 bg-background border border-border rounded-xl shadow-lg z-20 overflow-hidden">
+          {/*
+            Mobile: span the viewport with 0.5rem margins so we never run off
+            the left edge (the bell is ~80px from the right because the user
+            avatar sits to its right, so an `absolute right-0 w-80` anchored
+            to the bell goes ~25px off-screen on a 375px-wide phone).
+            sm and up: revert to the original bell-anchored 320px panel.
+          */}
+          <div className="fixed inset-x-2 top-14 sm:absolute sm:inset-x-auto sm:right-0 sm:top-10 sm:w-80 bg-background border border-border rounded-xl shadow-lg z-20 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold">Notifications</span>

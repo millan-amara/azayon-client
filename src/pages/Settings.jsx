@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Copy, Check, Plus, Eye, EyeOff, MoreVertical, Pencil, Trash2, Clock, X, CreditCard, CheckCircle2, Zap, ArrowRight, GripVertical, ChevronDown, ChevronUp, Smartphone } from 'lucide-react';
+import { Copy, Check, Plus, Eye, EyeOff, MoreVertical, Pencil, Trash2, Clock, X, CreditCard, CheckCircle2, Zap, ArrowRight, GripVertical, ChevronDown, ChevronUp, Smartphone, Lock, Users, ShieldCheck, Shield, ShieldAlert } from 'lucide-react';
 import InstallAppButton from '@/components/InstallAppButton';
 import { useInstallAvailable } from '@/lib/pwa';
 import { useAuth } from '@/context/AuthContext';
@@ -179,6 +179,132 @@ function InviteModal({ open, onClose }) {
   );
 }
 
+// Single source of truth for what each role can do, surfaced in the
+// RolePermissionsCard. Keep this aligned with server middleware/auth.js
+// (requireRole, restrictViewer) and the canWrite logic in useRole.js.
+const ROLE_PERMISSIONS = [
+  {
+    id: 'admin',
+    label: 'Admin',
+    Icon: ShieldCheck,
+    color: 'text-primary bg-primary/10',
+    summary: 'Full control of the workspace.',
+    can: [
+      'Invite, edit, deactivate and reactivate team members',
+      'Create, edit and delete pipelines (including who can see them)',
+      'Manage billing, subscription and the Paystack subaccount',
+      'Edit organisation settings, custom fields and email templates',
+      'Manage automations, API keys and webhooks',
+      'See and edit every deal and contact in the org',
+    ],
+    cannot: [],
+  },
+  {
+    id: 'sales_rep',
+    label: 'Sales rep',
+    Icon: Shield,
+    color: 'text-blue-600 bg-blue-50',
+    summary: 'Day-to-day selling — create and manage deals, contacts and tasks.',
+    can: [
+      'Create, edit and delete contacts, deals and tasks',
+      'Move deals through pipelines they have access to',
+      'Use email templates and automations',
+      'Import and export their own data',
+    ],
+    cannot: [
+      'Manage team members or roles',
+      'Edit pipelines, custom fields or org settings',
+      'Access billing or the API key',
+      'See pipelines they have not been added to',
+    ],
+  },
+  {
+    id: 'viewer',
+    label: 'Viewer',
+    Icon: ShieldAlert,
+    color: 'text-muted-foreground bg-muted',
+    summary: 'Read-only access — useful for stakeholders who want visibility without risk.',
+    can: [
+      'Browse contacts, deals, tasks and reports they can access',
+      'Use search and filters',
+      'Export data they can see',
+    ],
+    cannot: [
+      'Create or edit anything (writes are blocked at the API layer)',
+      'Run automations or test runs',
+      'See pipelines they have not been added to',
+    ],
+  },
+];
+
+function RolePermissionsCard({ defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Card className="overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-3 p-4 hover:bg-muted/40 transition-colors"
+      >
+        <div className="flex items-center gap-3 text-left">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <ShieldCheck className="w-4 h-4 text-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">What can each role do?</p>
+            <p className="text-xs text-muted-foreground">Admins, sales reps and viewers — at a glance.</p>
+          </div>
+        </div>
+        <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform shrink-0', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="border-t border-border divide-y divide-border">
+          {ROLE_PERMISSIONS.map((role) => {
+            const RoleIcon = role.Icon;
+            return (
+              <div key={role.id} className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className={cn('w-7 h-7 rounded-full flex items-center justify-center', role.color)}>
+                    <RoleIcon className="w-3.5 h-3.5" />
+                  </div>
+                  <p className="text-sm font-semibold">{role.label}</p>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">{role.summary}</p>
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-[11px] font-semibold text-green-700 uppercase tracking-wide mb-1">Can</p>
+                    <ul className="space-y-1">
+                      {role.can.map((item, i) => (
+                        <li key={i} className="flex items-start gap-2 text-xs">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0 mt-0.5" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  {role.cannot.length > 0 && (
+                    <div>
+                      <p className="text-[11px] font-semibold text-red-700 uppercase tracking-wide mb-1">Cannot</p>
+                      <ul className="space-y-1">
+                        {role.cannot.map((item, i) => (
+                          <li key={i} className="flex items-start gap-2 text-xs">
+                            <X className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function EditMemberModal({ open, onClose, member }) {
   const { mutateAsync, isPending } = useUpdateUser();
   const [form, setForm] = useState({ name: member?.name || '', role: member?.role || 'sales_rep' });
@@ -213,6 +339,7 @@ function EditMemberModal({ open, onClose, member }) {
             { value: 'admin', label: 'Admin' },
           ]}
         />
+        <RolePermissionsCard />
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
           <Button type="submit" className="flex-1" loading={isPending}>Save changes</Button>
@@ -252,6 +379,8 @@ function TeamTab({ user, teamData, onInvite }) {
   const pendingInvites = inviteData?.invites || [];
 
   return (
+    <div className="space-y-4">
+    <RolePermissionsCard />
     <Card className="p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold">
@@ -385,6 +514,7 @@ function TeamTab({ user, teamData, onInvite }) {
         </div>
       </Modal>
     </Card>
+    </div>
   );
 }
 
@@ -969,7 +1099,14 @@ function StageRow({ stage, index, total, onChange, onRemove, onMoveUp, onMoveDow
 }
 
 function PipelineEditor({ pipeline, onSave, onCancel, isNew }) {
+  const { data: teamData } = useTeam();
+  const teamMembers = (teamData?.users || []).filter((u) => u.isActive !== false);
+
   const [name, setName] = useState(pipeline?.name || '');
+  const [visibility, setVisibility] = useState(pipeline?.visibility || 'org');
+  const [allowedUsers, setAllowedUsers] = useState(
+    () => (pipeline?.allowedUsers || []).map((u) => (typeof u === 'string' ? u : u._id || u))
+  );
   // Lazy init — only runs on first render, so impure Math.random is acceptable here
   const [stages, setStages] = useState(() => (
     pipeline?.stages?.length
@@ -983,6 +1120,10 @@ function PipelineEditor({ pipeline, onSave, onCancel, isNew }) {
         ]
   ));
   const [saving, setSaving] = useState(false);
+
+  const toggleAllowedUser = (id) => {
+    setAllowedUsers((prev) => prev.includes(id) ? prev.filter((u) => u !== id) : [...prev, id]);
+  };
 
   const regularStages = stages.filter((s) => !s.isWon && !s.isLost);
   const wonStage = stages.find((s) => s.isWon);
@@ -1041,8 +1182,25 @@ function PipelineEditor({ pipeline, onSave, onCancel, isNew }) {
       return stage;
     });
 
+    // If admin set 'restricted' but didn't pick anyone, fall back to 'org'.
+    // Saving with `restricted` + empty list would lock everyone out (admins
+    // bypass the filter so they'd still see it, but that's a confusing state
+    // to ship a pipeline in — the toggle should reflect the working config).
+    let finalVisibility = visibility;
+    let finalAllowed = allowedUsers;
+    if (visibility === 'restricted' && allowedUsers.length === 0) {
+      finalVisibility = 'org';
+      finalAllowed = [];
+      toast('No users selected — visibility reset to "Everyone"', { icon: 'ℹ️' });
+    }
+
     setSaving(true);
-    await onSave({ name: name.trim(), stages: orderedStages });
+    await onSave({
+      name: name.trim(),
+      stages: orderedStages,
+      visibility: finalVisibility,
+      allowedUsers: finalAllowed,
+    });
     setSaving(false);
   };
 
@@ -1054,6 +1212,83 @@ function PipelineEditor({ pipeline, onSave, onCancel, isNew }) {
         onChange={(e) => setName(e.target.value)}
         placeholder="e.g. Sales Pipeline, Partnerships"
       />
+
+      <div>
+        <label className="text-sm font-medium">Who can see this pipeline?</label>
+        <p className="text-xs text-muted-foreground mt-0.5 mb-2">Admins can always see and manage every pipeline regardless of this setting.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setVisibility('org')}
+            className={cn(
+              'p-3 rounded-lg border text-left transition-all',
+              visibility === 'org' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+            )}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Users className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium">Everyone in the org</span>
+            </div>
+            <p className="text-xs text-muted-foreground">All active team members can see and use this pipeline.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setVisibility('restricted')}
+            className={cn(
+              'p-3 rounded-lg border text-left transition-all',
+              visibility === 'restricted' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+            )}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Lock className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium">Restricted</span>
+            </div>
+            <p className="text-xs text-muted-foreground">Only the team members you select below.</p>
+          </button>
+        </div>
+
+        {visibility === 'restricted' && (
+          <div className="mt-3 border border-border rounded-lg p-3 bg-muted/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-muted-foreground">Allowed users ({allowedUsers.length})</span>
+              {allowedUsers.length > 0 && (
+                <button type="button" onClick={() => setAllowedUsers([])}
+                  className="text-xs text-muted-foreground hover:text-foreground">Clear</button>
+              )}
+            </div>
+            {teamMembers.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2">No active team members. Invite teammates from the Team tab first.</p>
+            ) : (
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {teamMembers.map((member) => {
+                  const checked = allowedUsers.includes(member._id);
+                  return (
+                    <label key={member._id}
+                      className={cn(
+                        'flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-sm transition-colors',
+                        checked ? 'bg-primary/10' : 'hover:bg-muted'
+                      )}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleAllowedUser(member._id)}
+                        className="rounded border-border"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate">{member.name}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{member.email} · {member.role === 'admin' ? 'Admin' : member.role === 'sales_rep' ? 'Sales rep' : 'Viewer'}</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            {allowedUsers.length === 0 && teamMembers.length > 0 && (
+              <p className="text-xs text-amber-700 mt-2">Pick at least one user — saving with no one selected will revert visibility to "Everyone".</p>
+            )}
+          </div>
+        )}
+      </div>
 
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -1183,6 +1418,12 @@ function PipelinesTab() {
                   {pipeline.isDefault && (
                     <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium shrink-0">
                       Default
+                    </span>
+                  )}
+                  {pipeline.visibility === 'restricted' && (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium shrink-0 inline-flex items-center gap-1"
+                      title={`Restricted to ${(pipeline.allowedUsers || []).length} user${(pipeline.allowedUsers || []).length === 1 ? '' : 's'}`}>
+                      <Lock className="w-3 h-3" /> Restricted
                     </span>
                   )}
                 </div>
@@ -1946,6 +2187,7 @@ export default function Settings() {
 
       {activeTab === 'profile' && (
         <div className="space-y-4">
+          <RolePermissionsCard />
           <Card className="p-5">
             <h3 className="text-sm font-semibold mb-4">Your profile</h3>
             <form onSubmit={saveProfile} className="space-y-4">
