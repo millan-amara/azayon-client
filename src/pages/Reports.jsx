@@ -6,23 +6,11 @@ import { Card, Spinner } from '@/components/ui';
 import { formatCurrency, cn } from '@/lib/utils';
 
 const PRESETS = [
-  { id: '7d',   label: 'Last 7 days',   days: 7 },
-  { id: '30d',  label: 'Last 30 days',  days: 30 },
-  { id: '90d',  label: 'Last 90 days',  days: 90 },
-  { id: 'ytd',  label: 'This year',     days: null }, // computed below
+  { id: '7d',   label: 'Last 7 days' },
+  { id: '30d',  label: 'Last 30 days' },
+  { id: '90d',  label: 'Last 90 days' },
+  { id: 'ytd',  label: 'This year' },
 ];
-
-function presetRange(id) {
-  const now = new Date();
-  if (id === 'ytd') {
-    return { from: new Date(now.getFullYear(), 0, 1), to: now };
-  }
-  const preset = PRESETS.find((p) => p.id === id);
-  return {
-    from: new Date(Date.now() - (preset?.days || 30) * 24 * 60 * 60 * 1000),
-    to: now,
-  };
-}
 
 function StatCard(props) {
   const { icon: Icon, label, value, sub, accent } = props;
@@ -40,8 +28,7 @@ function StatCard(props) {
 
 export default function Reports() {
   const [presetId, setPresetId] = useState('30d');
-  const range = presetRange(presetId);
-  const { data, isLoading } = useReports({ from: range.from.toISOString(), to: range.to.toISOString() });
+  const { data, isLoading } = useReports(presetId);
 
   if (isLoading) {
     return <div className="flex justify-center py-20"><Spinner /></div>;

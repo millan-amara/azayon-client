@@ -337,10 +337,26 @@ export function useCustomers(params = {}) {
 
 // ─── REPORTS ─────────────────────────────────────────────────────────────────
 
-export function useReports({ from, to } = {}) {
+// Compute the date range for a preset id. Pure function but uses `new Date()`,
+// so we only call it inside queryFn — not during component render.
+function rangeForPreset(presetId) {
+  const now = new Date();
+  if (presetId === 'ytd') return { from: new Date(now.getFullYear(), 0, 1), to: now };
+  const days = { '7d': 7, '30d': 30, '90d': 90 }[presetId] || 30;
+  return { from: new Date(now.getTime() - days * 24 * 60 * 60 * 1000), to: now };
+}
+
+// Keyed by presetId only — so render-time `new Date()` calls don't churn the
+// query key and trigger an infinite refetch loop.
+export function useReports(presetId = '30d') {
   return useQuery({
-    queryKey: ['reports', from, to],
-    queryFn: () => api.get('/reports', { params: { from, to } }).then((r) => r.data),
+    queryKey: ['reports', presetId],
+    queryFn: () => {
+      const { from, to } = rangeForPreset(presetId);
+      return api
+        .get('/reports', { params: { from: from.toISOString(), to: to.toISOString() } })
+        .then((r) => r.data);
+    },
     ...STALE_5MIN,
   });
 }

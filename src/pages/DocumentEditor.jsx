@@ -2,10 +2,10 @@ import { useState, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
   ArrowLeft, Plus, Trash2, Send, Download, CheckCircle2, MessageCircle,
-  XCircle, FileText, Mail,
+  XCircle, FileText, Mail, Edit2,
 } from 'lucide-react';
 import {
-  useDocument, useCreateDocument, useUpdateDocument,
+  useDocument, useCreateDocument, useUpdateDocument, useDeleteDocument,
   useSendDocument, useMarkDocumentPaid, useAcceptQuote, useDeclineQuote,
   useContacts, useEmailTemplates,
 } from '@/hooks/useData';
@@ -45,7 +45,7 @@ function buildItemsFromDoc(doc) {
 
 // ─── EDITOR (draft mode) ──────────────────────────────────────────────────────
 
-function EditMode({ doc, type, contactIdParam, onSaved }) {
+function EditMode({ doc, type, contactIdParam, onSaved, onCancel }) {
   const navigate = useNavigate();
   const { org } = useAuth();
   const { data: contactsData } = useContacts({ limit: 200 });
@@ -75,7 +75,7 @@ function EditMode({ doc, type, contactIdParam, onSaved }) {
   const addItem    = () => setItems((p) => [...p, emptyItem()]);
   const removeItem = (idx) => setItems((p) => p.length > 1 ? p.filter((_, i) => i !== idx) : p);
 
-  const handleSave = async (close = false) => {
+  const handleSave = async () => {
     if (!contactId) return toast.error('Pick a contact');
     if (items.length === 0 || items.every((it) => !it.description.trim())) {
       return toast.error('Add at least one line item');
@@ -108,9 +108,13 @@ function EditMode({ doc, type, contactIdParam, onSaved }) {
       const data = await updateDoc({ id: doc._id, ...payload });
       saved = data?.document;
     }
+    if (!saved) return;
 
-    if (close && saved) navigate(`/documents/${saved._id}`);
-    else if (saved) onSaved?.(saved);
+    // For new docs, navigate to the detail view. For existing drafts being
+    // edited in-place, just hand control back to the parent so it can flip
+    // out of editing mode.
+    if (isNew) navigate(`/documents/${saved._id}`);
+    else onSaved?.(saved);
   };
 
   const heading = isNew ? `New ${type}` : `${doc.number} · Draft`;
@@ -130,8 +134,10 @@ function EditMode({ doc, type, contactIdParam, onSaved }) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate('/documents')}>Cancel</Button>
-          <Button size="sm" onClick={() => handleSave(true)} loading={creating || updating}>
+          <Button variant="outline" size="sm" onClick={onCancel || (() => navigate('/documents'))}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={handleSave} loading={creating || updating}>
             {isNew ? 'Save draft' : 'Save changes'}
           </Button>
         </div>
@@ -289,15 +295,19 @@ function EditMode({ doc, type, contactIdParam, onSaved }) {
 
 // ─── VIEW MODE (sent / paid / etc.) ───────────────────────────────────────────
 
-function ViewMode({ doc }) {
+function ViewMode({ doc, onEdit }) {
+  const navigate = useNavigate();
   const [showSend, setShowSend]       = useState(false);
   const [showMarkPaid, setShowMarkPaid] = useState(false);
   const [showDecline, setShowDecline] = useState(false);
+  const [showDelete, setShowDelete]   = useState(false);
   const { mutate: accept }            = useAcceptQuote();
+  const { mutate: deleteDoc }         = useDeleteDocument();
   const { canWrite }                  = useRole();
 
   const isInvoice = doc.type === 'invoice';
   const isPaid    = doc.status === 'paid';
+  const isDraft   = doc.status === 'draft';
   const isFinal   = ['paid', 'accepted', 'declined', 'cancelled', 'expired'].includes(doc.status);
 
   const downloadPdf = async () => {
@@ -324,6 +334,11 @@ function ViewMode({ doc }) {
           <Button variant="outline" size="sm" onClick={downloadPdf}>
             <Download className="w-4 h-4" /> PDF
           </Button>
+          {canWrite && isDraft && onEdit && (
+            <Button variant="outline" size="sm" onClick={onEdit}>
+              <Edit2 className="w-4 h-4" /> Edit
+            </Button>
+          )}
           {canWrite && !isFinal && (
             <Button size="sm" onClick={() => setShowSend(true)}>
               <Send className="w-4 h-4" /> Send
@@ -343,6 +358,16 @@ function ViewMode({ doc }) {
                 <XCircle className="w-4 h-4" /> Decline
               </Button>
             </>
+          )}
+          {canWrite && isDraft && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-red-500 hover:bg-red-50 hover:border-red-200"
+              onClick={() => setShowDelete(true)}
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
           )}
         </div>
       </div>
@@ -459,6 +484,23 @@ function ViewMode({ doc }) {
       <SendModal open={showSend} onClose={() => setShowSend(false)} doc={doc} />
       <MarkPaidModal open={showMarkPaid} onClose={() => setShowMarkPaid(false)} doc={doc} />
       <DeclineModal open={showDecline} onClose={() => setShowDecline(false)} doc={doc} />
+
+      <Modal open={showDelete} onClose={() => setShowDelete(false)} title={`Delete ${doc.type} ${doc.number}?`}>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            This draft will be removed permanently. This cannot be undone.
+          </p>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setShowDelete(false)}>Cancel</Button>
+            <Button
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white border-0"
+              onClick={() => { deleteDoc(doc._id); navigate('/documents'); }}
+            >
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -651,11 +693,16 @@ function DeclineModal({ open, onClose, doc }) {
 
 export default function DocumentEditor() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isNew = !id || id === 'new';
 
   const { data, isLoading } = useDocument(isNew ? null : id);
   const doc = data?.document;
+
+  // Local toggle for editing an existing draft. Defaults to false so users
+  // land on the preview after saving, with action buttons visible.
+  const [editing, setEditing] = useState(false);
 
   if (!isNew && isLoading) {
     return <div className="flex justify-center py-20"><Spinner /></div>;
@@ -670,11 +717,27 @@ export default function DocumentEditor() {
     );
   }
 
-  const isDraft = isNew || doc?.status === 'draft';
   const type = isNew ? (searchParams.get('type') || 'invoice') : doc?.type;
   const contactIdParam = searchParams.get('contactId');
 
-  return isDraft
-    ? <EditMode doc={doc || null} type={type} contactIdParam={contactIdParam} />
-    : <ViewMode doc={doc} />;
+  // New docs always start in edit mode. Existing drafts default to preview;
+  // the user opts into editing via the Edit button in ViewMode.
+  if (isNew || editing) {
+    return (
+      <EditMode
+        doc={doc || null}
+        type={type}
+        contactIdParam={contactIdParam}
+        onCancel={() => (isNew ? navigate('/documents') : setEditing(false))}
+        onSaved={() => setEditing(false)}
+      />
+    );
+  }
+
+  return (
+    <ViewMode
+      doc={doc}
+      onEdit={doc.status === 'draft' ? () => setEditing(true) : null}
+    />
+  );
 }
