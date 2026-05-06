@@ -8,7 +8,12 @@
 //   static assets          → cache-first with network fallback (long-cached, hashed in build)
 //   /favicon.svg, manifest → stale-while-revalidate
 
-const VERSION = 'azayon-v1';
+// Bump this whenever cached static assets change visually (logo, favicon,
+// manifest icons, theme colour) — new bytes here trigger a fresh install +
+// activate, which purges the old caches in `caches.delete(k)` below. Without
+// the bump the browser never sees a "new" SW and keeps serving stale icons
+// out of `app-shell-azayon-vN` forever.
+const VERSION = 'azayon-v2';
 const APP_SHELL_CACHE = `app-shell-${VERSION}`;
 const ASSET_CACHE     = `assets-${VERSION}`;
 

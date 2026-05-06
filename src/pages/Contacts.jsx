@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Plus, Upload, Download, MessageCircle, Phone, Mail, Sparkles, Check, X, AlertCircle, Trash2, UserPlus, Tag as TagIcon, Archive } from 'lucide-react';
 import { useContacts, useCreateContact, useDeleteContact, useTeam, useBulkUpdateContacts, useContactTags, useCustomFields } from '@/hooks/useData';
@@ -42,6 +42,30 @@ function SmartImportModal({ open, onClose, onImported }) {
   const [mapping, setMapping] = useState({}); // { csvHeader: crmField }
   const [analysing, setAnalysing] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const openFilePicker = () => fileInputRef.current?.click();
+
+  const onDragOver = (e) => {
+    e.preventDefault();
+    if (!dragging) setDragging(true);
+  };
+  const onDragLeave = (e) => {
+    e.preventDefault();
+    setDragging(false);
+  };
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      toast.error('Please drop a CSV file');
+      return;
+    }
+    handleFile(file);
+  };
 
   const handleFile = async (file) => {
     if (!file) return;
@@ -144,15 +168,50 @@ Respond with JSON only: {"CSV Header": "crmField", ...}`,
         {/* UPLOAD STEP */}
         {step === 'upload' && (
           <div className="space-y-4">
-            <div className="border-2 border-dashed border-border rounded-xl p-8 text-center hover:border-primary/50 transition-colors">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={openFilePicker}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  openFilePicker();
+                }
+              }}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
+              className={cn(
+                'border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                dragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50',
+                analysing && 'pointer-events-none opacity-50'
+              )}
+            >
               <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
-              <p className="text-sm font-medium mb-1">Drop a CSV file or click to browse</p>
+              <p className="text-sm font-medium mb-1">
+                {dragging ? 'Drop to upload' : 'Drop a CSV file or click to browse'}
+              </p>
               <p className="text-xs text-muted-foreground mb-4">Any column names work — AI will map them automatically</p>
-              <label className="cursor-pointer">
-                <input type="file" accept=".csv" className="hidden"
-                  onChange={(e) => handleFile(e.target.files[0])} />
-                <Button variant="outline" size="sm" onClick={() => {}}>Choose CSV file</Button>
-              </label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={(e) => { e.stopPropagation(); openFilePicker(); }}
+              >
+                Choose CSV file
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  // reset so picking the same file twice still triggers onChange
+                  e.target.value = '';
+                  if (file) handleFile(file);
+                }}
+              />
             </div>
             <div className="bg-muted/40 rounded-lg p-3">
               <p className="text-xs font-medium mb-1.5">Your CSV can have any column names, for example:</p>
@@ -283,13 +342,13 @@ function CreateContactModal({ open, onClose }) {
     birthday: '', anniversary: '',
   });
   const [customValues, setCustomValues] = useState({});
+  const [showMore, setShowMore] = useState(false);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const setCustom = (key) => (e) => setCustomValues((v) => ({ ...v, [key]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // Validate required custom fields
     for (const f of customFields) {
       if (f.required && !customValues[f.key]) {
         toast.error(`${f.label} is required`);
@@ -307,54 +366,52 @@ function CreateContactModal({ open, onClose }) {
     onClose();
     setForm({ firstName: '', lastName: '', email: '', phone: '', company: '', jobTitle: '', status: 'lead', assignedTo: '', birthday: '', anniversary: '' });
     setCustomValues({});
+    setShowMore(false);
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Add contact">
+    <Modal open={open} onClose={onClose} title="Add contact" className="max-w-xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <Input label="First name *" value={form.firstName} onChange={set('firstName')} required />
+          <Input label="First name *" value={form.firstName} onChange={set('firstName')} required autoFocus />
           <Input label="Last name" value={form.lastName} onChange={set('lastName')} />
         </div>
-        <Input label="Email" type="email" value={form.email} onChange={set('email')} />
-        <Input label="Phone (with country code)" placeholder="+254712345678" value={form.phone} onChange={set('phone')} />
-        <Input label="Company" value={form.company} onChange={set('company')} />
-        <Input label="Job title" value={form.jobTitle} onChange={set('jobTitle')} />
-        <Select
-          label="Status"
-          value={form.status}
-          onChange={set('status')}
-          options={STATUS_OPTIONS.slice(1)}
-        />
-        <Select
-          label="Assign to"
-          value={form.assignedTo}
-          onChange={set('assignedTo')}
-          options={[
-            { value: '', label: 'Unassigned' },
-            ...(teamData?.users || []).map((u) => ({ value: u._id, label: u.name })),
-          ]}
-        />
+
+        <Input label="Email" type="email" placeholder="jane@example.com" value={form.email} onChange={set('email')} />
+        <Input label="Phone" placeholder="+254 712 345 678" value={form.phone} onChange={set('phone')} />
 
         <div className="grid grid-cols-2 gap-4">
-          <Input
-            label="Birthday"
-            type="date"
-            value={form.birthday}
-            onChange={set('birthday')}
+          <Input label="Company" value={form.company} onChange={set('company')} />
+          <Input label="Job title" value={form.jobTitle} onChange={set('jobTitle')} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Select
+            label="Status"
+            value={form.status}
+            onChange={set('status')}
+            options={STATUS_OPTIONS.slice(1)}
           />
-          <Input
-            label="Anniversary"
-            type="date"
-            value={form.anniversary}
-            onChange={set('anniversary')}
+          <Select
+            label="Assign to"
+            value={form.assignedTo}
+            onChange={set('assignedTo')}
+            options={[
+              { value: '', label: 'Unassigned' },
+              ...(teamData?.users || []).map((u) => ({ value: u._id, label: u.name })),
+            ]}
           />
         </div>
 
-        {/* Custom fields */}
-        {customFields.length > 0 && (
-          <div className="space-y-3 pt-2 border-t border-border">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Additional info</p>
+        {showMore && (
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Birthday" type="date" value={form.birthday} onChange={set('birthday')} />
+            <Input label="Anniversary" type="date" value={form.anniversary} onChange={set('anniversary')} />
+          </div>
+        )}
+
+        {customFields.length > 0 && showMore && (
+          <div className="space-y-4">
             {customFields.map((f) => {
               const label = f.label + (f.required ? ' *' : '');
               if (f.type === 'select') {
@@ -383,9 +440,19 @@ function CreateContactModal({ open, onClose }) {
           </div>
         )}
 
-        <div className="flex gap-3 pt-2">
-          <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button type="submit" className="flex-1" loading={isPending}>Create contact</Button>
+        {!showMore && (
+          <button
+            type="button"
+            onClick={() => setShowMore(true)}
+            className="text-sm text-primary hover:underline"
+          >
+            + Add birthday, anniversary{customFields.length > 0 ? ' and more' : ''}
+          </button>
+        )}
+
+        <div className="flex items-center justify-end gap-2 pt-2">
+          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="submit" loading={isPending}>Create contact</Button>
         </div>
       </form>
     </Modal>

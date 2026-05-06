@@ -351,6 +351,14 @@ function EditContactModal({ open, onClose, contact }) {
   });
   const [customValues, setCustomValues] = useState(() => readCustomFields(contact));
 
+  // Default expanded if the contact already has any "more" data — so users
+  // can immediately see/edit what they came here for.
+  const hasExtras =
+    !!form.birthday ||
+    !!form.anniversary ||
+    Object.values(customValues).some((v) => v !== '' && v != null);
+  const [showMore, setShowMore] = useState(hasExtras);
+
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const setCustom = (key) => (e) => setCustomValues((v) => ({ ...v, [key]: e.target.value }));
 
@@ -375,40 +383,49 @@ function EditContactModal({ open, onClose, contact }) {
   const teamMembers = (teamData?.users || []).filter((u) => u.isActive !== false);
 
   return (
-    <Modal open={open} onClose={onClose} title="Edit contact">
+    <Modal open={open} onClose={onClose} title="Edit contact" className="max-w-xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <Input label="First name" value={form.firstName} onChange={set('firstName')} required />
+          <Input label="First name *" value={form.firstName} onChange={set('firstName')} required autoFocus />
           <Input label="Last name" value={form.lastName} onChange={set('lastName')} />
         </div>
-        <Input label="Email" type="email" value={form.email} onChange={set('email')} />
-        <Input label="Phone" value={form.phone} onChange={set('phone')} />
-        <Input label="Company" value={form.company} onChange={set('company')} />
-        <Input label="Job title" value={form.jobTitle} onChange={set('jobTitle')} />
-        <Select label="Status" value={form.status} onChange={set('status')}
-          options={[{ value: 'lead', label: 'Lead' }, { value: 'prospect', label: 'Prospect' }, { value: 'customer', label: 'Customer' }, { value: 'churned', label: 'Churned' }]} />
-        <Select
-          label="Assigned to"
-          value={form.assignedTo}
-          onChange={set('assignedTo')}
-          options={[
-            { value: '', label: 'Unassigned' },
-            ...teamMembers.map((u) => ({
-              value: u._id,
-              label: u.role === 'viewer' ? `${u.name} (viewer)` : u.name,
-            })),
-          ]}
-        />
-        <Textarea label="Notes" value={form.notes} onChange={set('notes')} rows={3} />
+
+        <Input label="Email" type="email" placeholder="jane@example.com" value={form.email} onChange={set('email')} />
+        <Input label="Phone" placeholder="+254 712 345 678" value={form.phone} onChange={set('phone')} />
 
         <div className="grid grid-cols-2 gap-4">
-          <Input label="Birthday" type="date" value={form.birthday} onChange={set('birthday')} />
-          <Input label="Anniversary" type="date" value={form.anniversary} onChange={set('anniversary')} />
+          <Input label="Company" value={form.company} onChange={set('company')} />
+          <Input label="Job title" value={form.jobTitle} onChange={set('jobTitle')} />
         </div>
 
-        {customFields.length > 0 && (
-          <div className="space-y-3 pt-2 border-t border-border">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Additional info</p>
+        <div className="grid grid-cols-2 gap-4">
+          <Select label="Status" value={form.status} onChange={set('status')}
+            options={[{ value: 'lead', label: 'Lead' }, { value: 'prospect', label: 'Prospect' }, { value: 'customer', label: 'Customer' }, { value: 'churned', label: 'Churned' }]} />
+          <Select
+            label="Assigned to"
+            value={form.assignedTo}
+            onChange={set('assignedTo')}
+            options={[
+              { value: '', label: 'Unassigned' },
+              ...teamMembers.map((u) => ({
+                value: u._id,
+                label: u.role === 'viewer' ? `${u.name} (viewer)` : u.name,
+              })),
+            ]}
+          />
+        </div>
+
+        <Textarea label="Notes" value={form.notes} onChange={set('notes')} rows={3} />
+
+        {showMore && (
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Birthday" type="date" value={form.birthday} onChange={set('birthday')} />
+            <Input label="Anniversary" type="date" value={form.anniversary} onChange={set('anniversary')} />
+          </div>
+        )}
+
+        {showMore && customFields.length > 0 && (
+          <div className="space-y-4">
             {customFields.map((f) => {
               const label = f.label + (f.required ? ' *' : '');
               if (f.type === 'select') {
@@ -437,9 +454,19 @@ function EditContactModal({ open, onClose, contact }) {
           </div>
         )}
 
-        <div className="flex gap-3 pt-2">
-          <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button type="submit" className="flex-1" loading={isPending}>Save changes</Button>
+        {!showMore && (
+          <button
+            type="button"
+            onClick={() => setShowMore(true)}
+            className="text-sm text-primary hover:underline"
+          >
+            + Add birthday, anniversary{customFields.length > 0 ? ' and more' : ''}
+          </button>
+        )}
+
+        <div className="flex items-center justify-end gap-2 pt-2">
+          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="submit" loading={isPending}>Save changes</Button>
         </div>
       </form>
     </Modal>
