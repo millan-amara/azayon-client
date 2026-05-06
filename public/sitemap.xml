@@ -5,7 +5,7 @@
   links (/i/:token) are intentionally NOT enumerated here because their tokens
   are unguessable and shouldn't be discoverable; users share them directly.
 -->
-<urlset xmlns="http://www.sitemap.org/schemas/0.9/sitemap.xsd"
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
                             http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
