@@ -3,12 +3,14 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft, MessageCircle, ExternalLink, Sparkles,
   RefreshCw, X, Paperclip, Trophy, XCircle, Edit2, Trash2,
+  Calendar, Percent, User as UserIcon, Clock,
+  Phone, Mail,
 } from 'lucide-react';
 import { useDeal, useMarkDealWon, useMarkDealLost, useUpdateDeal, useTeam, useDeleteDeal, useCustomFields } from '@/hooks/useData';
 import { useRole } from '@/hooks/useRole';
-import { Button, Card, Modal, Input, Select, Textarea, Spinner } from '@/components/ui';
+import { Button, Card, Modal, Input, Select, Textarea, Spinner, Avatar } from '@/components/ui';
 import { Attachments } from '@/components/Attachments';
-import { formatCurrency, formatDate, DEAL_STATUS_COLORS, getWhatsAppUrl, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, timeAgo, DEAL_STATUS_COLORS, getWhatsAppUrl, cn } from '@/lib/utils';
 import { callClaudeStream } from '@/lib/ai';
 import toast from 'react-hot-toast';
 
@@ -57,36 +59,45 @@ Give a sharp 3-4 sentence deal assessment: health of the deal, biggest risk, and
     }
   };
 
-  return (
-    <div>
-      {!visible ? (
-        <Button variant="outline" size="sm" onClick={generate}>
-          <Sparkles className="w-3.5 h-3.5 text-primary" /> AI Assessment
-        </Button>
-      ) : (
-        <div className="border border-primary/20 rounded-xl bg-primary/5 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-primary" />
-              <span className="text-xs font-semibold text-primary">AI Assessment</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button onClick={generate} className="p-1 rounded hover:bg-primary/10 transition-colors" title="Regenerate">
-                <RefreshCw className={cn('w-3.5 h-3.5 text-primary', loading && 'animate-spin')} />
-              </button>
-              <button onClick={() => setVisible(false)} className="p-1 rounded hover:bg-primary/10 transition-colors">
-                <X className="w-3.5 h-3.5 text-muted-foreground" />
-              </button>
-            </div>
-          </div>
-          {loading && !summary ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Spinner className="w-3 h-3" /> Assessing deal...
-            </div>
-          ) : (
-            <p className="text-sm text-foreground leading-relaxed">{summary}</p>
-          )}
+  // Both states share the same outer shape so the sidebar slot doesn't change
+  // size when the rep clicks "AI Assessment".
+  if (!visible) {
+    return (
+      <button
+        onClick={generate}
+        className="w-full text-left border border-dashed border-primary/30 hover:border-primary hover:bg-primary/5 rounded-xl p-4 transition-colors"
+      >
+        <div className="flex items-center gap-2 mb-1">
+          <Sparkles className="w-4 h-4 text-primary" />
+          <p className="text-sm font-semibold text-primary">AI Assessment</p>
         </div>
+        <p className="text-xs text-muted-foreground">Get a coach-style read on this deal's health and the next move.</p>
+      </button>
+    );
+  }
+
+  return (
+    <div className="border border-primary/20 rounded-xl bg-primary/5 p-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-primary" />
+          <span className="text-xs font-semibold text-primary">AI Assessment</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={generate} className="p-1 rounded hover:bg-primary/10 transition-colors" title="Regenerate">
+            <RefreshCw className={cn('w-3.5 h-3.5 text-primary', loading && 'animate-spin')} />
+          </button>
+          <button onClick={() => setVisible(false)} className="p-1 rounded hover:bg-primary/10 transition-colors">
+            <X className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+        </div>
+      </div>
+      {loading && !summary ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Spinner className="w-3 h-3" /> Assessing deal...
+        </div>
+      ) : (
+        <p className="text-sm text-foreground leading-relaxed">{summary}</p>
       )}
     </div>
   );
@@ -196,7 +207,8 @@ function EditDealModal({ open, onClose, deal }) {
   );
 }
 
-// Read-only block that shows custom field values on the deal detail card.
+// Read-only block that shows custom field values. Self-frames so the sidebar
+// doesn't end up with an empty card when no fields are set.
 function DealCustomFieldsDisplay({ deal, fields }) {
   const values = readCustomFields(deal);
   const populated = fields.filter((f) => values[f.key] != null && values[f.key] !== '');
@@ -212,17 +224,115 @@ function DealCustomFieldsDisplay({ deal, fields }) {
   };
 
   return (
-    <div className="mt-4 pt-4 border-t border-border">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Additional info</p>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <Card className="p-5">
+      <h3 className="text-sm font-semibold mb-3">Additional info</h3>
+      <div className="space-y-3">
         {populated.map((f) => (
           <div key={f._id}>
-            <p className="text-xs text-muted-foreground">{f.label}</p>
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{f.label}</p>
             <p className="text-sm font-medium mt-0.5 truncate">{formatValue(f, values[f.key])}</p>
           </div>
         ))}
       </div>
+    </Card>
+  );
+}
+
+// Sidebar info-row with icon. Skips itself for empty values. `icon` is
+// rendered JSX (e.g. `<Calendar className="..." />`), passed by the caller.
+function InfoRow({ icon, label, value }) {
+  if (value == null || value === '') return null;
+  return (
+    <div className="flex items-start gap-3">
+      <span className="text-muted-foreground mt-0.5 shrink-0">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{label}</p>
+        <p className="text-sm font-medium text-foreground truncate">{value}</p>
+      </div>
     </div>
+  );
+}
+
+// Visual stage progress bar. Shows the open stages (Won/Lost are end states,
+// not steps). Active stage gets a filled chip; stages the deal has already
+// passed get a muted-success fill; future stages stay neutral.
+//
+// When the deal is in a Won stage we render the full row in success colour;
+// in a Lost stage we render it in destructive colour to make the outcome
+// scannable at a glance.
+function StageProgress({ stages = [], currentStageId, status }) {
+  if (!stages || stages.length === 0) return null;
+
+  // Index open stages in pipeline order so we can mark "passed" stages.
+  const openStages = [...stages].filter((s) => !s.isWon && !s.isLost).sort((a, b) => a.order - b.order);
+  const currentIdx = openStages.findIndex((s) => s._id?.toString() === currentStageId?.toString());
+  const isWon = status === 'won';
+  const isLost = status === 'lost';
+
+  return (
+    <div className="flex items-stretch gap-1 overflow-x-auto -mx-1 px-1">
+      {openStages.map((s, i) => {
+        const passed = currentIdx >= 0 && i < currentIdx;
+        const active = currentIdx >= 0 && i === currentIdx;
+        const cls = isWon
+          ? 'bg-green-100 text-green-700 border-green-200'
+          : isLost
+            ? 'bg-red-50 text-red-500 border-red-100'
+            : active
+              ? 'bg-primary text-primary-foreground border-primary'
+              : passed
+                ? 'bg-primary/10 text-primary border-primary/20'
+                : 'bg-muted text-muted-foreground border-border';
+        return (
+          <div
+            key={s._id}
+            className={cn(
+              'flex-1 min-w-18 px-2 py-1.5 rounded-md border text-xs font-medium text-center truncate',
+              cls
+            )}
+            title={s.name}
+          >
+            {s.name}
+          </div>
+        );
+      })}
+      {/* End-state pill */}
+      {(isWon || isLost) && (
+        <div className={cn(
+          'shrink-0 px-2 py-1.5 rounded-md text-xs font-semibold border flex items-center gap-1',
+          isWon ? 'bg-green-600 text-white border-green-600' : 'bg-red-600 text-white border-red-600'
+        )}>
+          {isWon ? <Trophy className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+          {isWon ? 'Won' : 'Lost'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Vertical stage history showing how the deal has moved through the pipeline.
+// Most recent first, with a connector line so it reads as a journey.
+function StageHistoryTimeline({ history = [] }) {
+  if (!history || history.length === 0) return null;
+  // Render newest first
+  const sorted = [...history].sort((a, b) => new Date(b.enteredAt) - new Date(a.enteredAt));
+  return (
+    <ol className="relative pl-5">
+      <span className="absolute left-1.75 top-2 bottom-2 w-px bg-border" aria-hidden />
+      {sorted.map((s, i) => (
+        <li key={i} className="relative pb-4 last:pb-0">
+          <span className={cn(
+            'absolute -left-5 top-1.5 w-3 h-3 rounded-full border-2 border-background',
+            i === 0 ? 'bg-primary' : 'bg-muted-foreground/40'
+          )} />
+          <p className="text-sm font-medium">{s.stageName}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Entered {timeAgo(s.enteredAt)}
+            {s.exitedAt && <> · Stayed {Math.max(1, Math.round((new Date(s.exitedAt) - new Date(s.enteredAt)) / 86400000))} day{Math.round((new Date(s.exitedAt) - new Date(s.enteredAt)) / 86400000) === 1 ? '' : 's'}</>}
+          </p>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -255,158 +365,202 @@ export default function DealDetail() {
     setShowLostModal(false);
   };
 
+  const isOpen = deal.status === 'open';
+  const stageColor = isOpen ? 'text-primary' : deal.status === 'won' ? 'text-green-600' : 'text-red-500';
+
   return (
-    <div className="max-w-4xl space-y-6">
-      {/* Back */}
-      <button onClick={() => navigate('/pipeline')} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+    <div className="max-w-6xl space-y-4">
+      {/* Back nav */}
+      <button
+        onClick={() => navigate('/pipeline')}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
         <ArrowLeft className="w-4 h-4" /> Back to pipeline
       </button>
 
-      {/* Header card */}
-      <Card className="p-6">
+      {/* Hero card — value is the headline, stage progress is the second-most
+          scannable element. Edit/Delete pushed into icon buttons so the eye
+          lands on Mark Won / Mark Lost first. */}
+      <Card className="p-5 sm:p-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-xl font-semibold">{deal.title}</h1>
-              <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium capitalize', DEAL_STATUS_COLORS[deal.status])}>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-semibold truncate">{deal.title}</h1>
+              <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium capitalize shrink-0', DEAL_STATUS_COLORS[deal.status])}>
                 {deal.status}
               </span>
             </div>
-            <p className="text-3xl font-bold text-primary mt-1">{formatCurrency(deal.value, deal.currency)}</p>
-            <p className="text-sm text-muted-foreground mt-1">{deal.stageName} · {deal.pipeline?.name}</p>
+            <p className={cn('text-3xl sm:text-4xl font-bold mt-2', stageColor)}>
+              {formatCurrency(deal.value, deal.currency)}
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              <span className="font-medium text-foreground">{deal.stageName}</span>
+              {deal.pipeline?.name && <> · {deal.pipeline.name}</>}
+            </p>
           </div>
 
-          {/* Actions */}
-          {canWrite && deal.status === 'open' && (
-            <div className="flex gap-2 flex-wrap">
-              <Button variant="success" size="sm" onClick={() => markWon(deal._id)}>
-                <Trophy className="w-4 h-4" /> Mark won
-              </Button>
-              <Button variant="destructive" size="sm" onClick={() => setShowLostModal(true)}>
-                <XCircle className="w-4 h-4" /> Mark lost
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setShowEdit(true)}>
-                <Edit2 className="w-4 h-4" /> Edit
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-red-500 hover:bg-red-50 hover:border-red-200"
-                onClick={() => setShowDeleteModal(true)}
-              >
-                <Trash2 className="w-4 h-4" /> Delete
-              </Button>
-            </div>
-          )}
-          {canWrite && deal.status !== 'open' && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-red-500 hover:bg-red-50 hover:border-red-200"
-              onClick={() => setShowDeleteModal(true)}
-            >
-              <Trash2 className="w-4 h-4" /> Delete
-            </Button>
-          )}
+          {/* Actions — primary verbs first, management actions as icons */}
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
+            {canWrite && isOpen && (
+              <>
+                <Button variant="success" size="sm" onClick={() => markWon(deal._id)}>
+                  <Trophy className="w-4 h-4" /> Mark won
+                </Button>
+                <Button variant="destructive" size="sm" onClick={() => setShowLostModal(true)}>
+                  <XCircle className="w-4 h-4" /> Mark lost
+                </Button>
+              </>
+            )}
+            {canWrite && (
+              <div className="flex items-center gap-1">
+                {isOpen && (
+                  <Button variant="ghost" size="icon" onClick={() => setShowEdit(true)} title="Edit deal">
+                    <Edit2 className="w-4 h-4" />
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-red-500 hover:bg-red-50"
+                  onClick={() => setShowDeleteModal(true)}
+                  title="Delete deal"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Details grid */}
-        <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-border text-sm">
-          {[
-            { label: 'Assigned to', value: deal.assignedTo?.name },
-            { label: 'Expected close', value: deal.expectedCloseDate ? formatDate(deal.expectedCloseDate) : '—' },
-            { label: 'Probability', value: deal.probability ? `${deal.probability}%` : '—' },
-            { label: 'Created', value: formatDate(deal.createdAt) },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <p className="text-xs text-muted-foreground">{label}</p>
-              <p className="font-medium mt-0.5">{value || '—'}</p>
+        {/* Stage progress — visual, not just an arrow string */}
+        {deal.pipeline?.stages?.length > 0 && (
+          <div className="mt-5 pt-4 border-t border-border">
+            <StageProgress
+              stages={deal.pipeline.stages}
+              currentStageId={deal.stageId}
+              status={deal.status}
+            />
+          </div>
+        )}
+      </Card>
+
+      {/* Two-column body. Stacks on mobile. */}
+      <div className="grid lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 space-y-4">
+          {/* Notes */}
+          {deal.notes && (
+            <Card className="p-5 sm:p-6">
+              <h3 className="text-sm font-semibold mb-2">Notes</h3>
+              <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{deal.notes}</p>
+            </Card>
+          )}
+
+          {/* Lost reason — surface it loudly so reps don't miss the post-mortem */}
+          {deal.status === 'lost' && deal.lostReason && (
+            <Card className="p-5 sm:p-6 border-red-200 bg-red-50/40">
+              <div className="flex items-center gap-2 mb-2">
+                <XCircle className="w-4 h-4 text-red-500" />
+                <h3 className="text-sm font-semibold text-red-700">Lost reason</h3>
+              </div>
+              <p className="text-sm text-red-900 whitespace-pre-wrap">{deal.lostReason}</p>
+            </Card>
+          )}
+
+          {/* Stage history — shown as a vertical journey, only when there's
+              more than the initial entry (otherwise it's just one chip) */}
+          {deal.stageHistory?.length > 1 && (
+            <Card className="p-5 sm:p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Clock className="w-4 h-4 text-muted-foreground" />
+                <h3 className="text-sm font-semibold">Stage history</h3>
+              </div>
+              <StageHistoryTimeline history={deal.stageHistory} />
+            </Card>
+          )}
+
+          {/* Files */}
+          <Card className="p-5 sm:p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Paperclip className="w-4 h-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold">
+                Files{deal.attachments?.length > 0 && <span className="text-muted-foreground font-normal"> · {deal.attachments.length}</span>}
+              </h3>
             </div>
-          ))}
+            <Attachments
+              resourceType="deal"
+              resourceId={id}
+              initialAttachments={deal.attachments || []}
+            />
+          </Card>
         </div>
 
-        {/* Stage history */}
-        {deal.stageHistory?.length > 1 && (
-          <div className="mt-4 pt-4 border-t border-border">
-            <p className="text-xs text-muted-foreground mb-2">Stage history</p>
-            <div className="flex items-center gap-1.5 flex-wrap text-xs">
-              {deal.stageHistory.map((s, i) => (
-                <span key={i} className="flex items-center gap-1.5">
-                  <span className="bg-muted px-2 py-0.5 rounded-md">{s.stageName}</span>
-                  {i < deal.stageHistory.length - 1 && <span className="text-muted-foreground">→</span>}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Notes */}
-        {deal.notes && (
-          <div className="mt-4 pt-4 border-t border-border">
-            <p className="text-xs text-muted-foreground mb-1">Notes</p>
-            <p className="text-sm text-muted-foreground">{deal.notes}</p>
-          </div>
-        )}
-
-        {/* Lost reason */}
-        {deal.status === 'lost' && deal.lostReason && (
-          <div className="mt-4 pt-4 border-t border-border">
-            <p className="text-xs text-muted-foreground mb-1">Lost reason</p>
-            <p className="text-sm text-muted-foreground">{deal.lostReason}</p>
-          </div>
-        )}
-
-        <DealCustomFieldsDisplay deal={deal} fields={customFieldDefs} />
-
-        {/* AI Assessment */}
-        <div className="mt-5 pt-4 border-t border-border">
+        {/* Right sidebar — facts about the deal + the contact + AI on top */}
+        <aside className="space-y-4">
+          {/* AI Assessment */}
           <AIDealSummary deal={deal} contact={contact} />
-        </div>
-      </Card>
 
-      {/* Contact card */}
-      {contact && (
-        <Card className="p-5">
-          <h3 className="text-sm font-semibold mb-3">Contact</h3>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-semibold text-primary">
-                {(contact.firstName?.[0] || '') + (contact.lastName?.[0] || '')}
-              </div>
-              <div>
-                <p className="font-medium">{contact.firstName} {contact.lastName}</p>
-                <p className="text-xs text-muted-foreground">{contact.company || contact.email}</p>
-                {contact.phone && <p className="text-xs text-muted-foreground">{contact.phone}</p>}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {waUrl && (
-                <a href={waUrl} target="_blank" rel="noopener noreferrer">
-                  <Button variant="success" size="sm"><MessageCircle className="w-4 h-4" /> WhatsApp</Button>
-                </a>
+          {/* Deal info */}
+          <Card className="p-5">
+            <h3 className="text-sm font-semibold mb-4">Deal info</h3>
+            <div className="space-y-3.5">
+              <InfoRow icon={<UserIcon className="w-4 h-4" />} label="Assigned to" value={deal.assignedTo?.name} />
+              <InfoRow icon={<Calendar className="w-4 h-4" />} label="Expected close" value={deal.expectedCloseDate ? formatDate(deal.expectedCloseDate) : null} />
+              <InfoRow icon={<Percent className="w-4 h-4" />} label="Probability" value={deal.probability != null ? `${deal.probability}%` : null} />
+              <InfoRow icon={<Clock className="w-4 h-4" />} label="Created" value={formatDate(deal.createdAt)} />
+              {deal.closedAt && (
+                <InfoRow
+                  icon={deal.status === 'won' ? <Trophy className="w-4 h-4 text-green-600" /> : <XCircle className="w-4 h-4 text-red-500" />}
+                  label={deal.status === 'won' ? 'Won on' : deal.status === 'lost' ? 'Lost on' : 'Closed on'}
+                  value={formatDate(deal.closedAt)}
+                />
               )}
-              <Link to={`/contacts/${contact._id}`}>
-                <Button variant="outline" size="sm"><ExternalLink className="w-4 h-4" /> View contact</Button>
-              </Link>
             </div>
-          </div>
-        </Card>
-      )}
+          </Card>
 
-      {/* Files */}
-      <Card className="p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <Paperclip className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold">
-            Files {deal.attachments?.length > 0 && `(${deal.attachments.length})`}
-          </h3>
-        </div>
-        <Attachments
-          resourceType="deal"
-          resourceId={id}
-          initialAttachments={deal.attachments || []}
-        />
-      </Card>
+          {/* Contact card — compact, with quick actions */}
+          {contact && (
+            <Card className="p-5">
+              <h3 className="text-sm font-semibold mb-3">Contact</h3>
+              <div className="flex items-start gap-3">
+                <Avatar name={`${contact.firstName || ''} ${contact.lastName || ''}`} size="md" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-sm truncate">{contact.firstName} {contact.lastName}</p>
+                  {contact.company && <p className="text-xs text-muted-foreground truncate">{contact.company}</p>}
+                  {contact.email && (
+                    <a href={`mailto:${contact.email}`} className="text-xs text-muted-foreground hover:text-primary truncate block mt-1">{contact.email}</a>
+                  )}
+                  {contact.phone && (
+                    <a href={`tel:${contact.phone}`} className="text-xs text-muted-foreground hover:text-primary truncate block">{contact.phone}</a>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 mt-4">
+                {waUrl && (
+                  <a href={waUrl} target="_blank" rel="noopener noreferrer" className="flex-1">
+                    <Button variant="success" size="sm" className="w-full"><MessageCircle className="w-4 h-4" /> WhatsApp</Button>
+                  </a>
+                )}
+                {contact.phone && (
+                  <a href={`tel:${contact.phone}`}>
+                    <Button variant="outline" size="sm"><Phone className="w-4 h-4" /></Button>
+                  </a>
+                )}
+                {contact.email && (
+                  <a href={`mailto:${contact.email}`}>
+                    <Button variant="outline" size="sm"><Mail className="w-4 h-4" /></Button>
+                  </a>
+                )}
+                <Link to={`/contacts/${contact._id}`}>
+                  <Button variant="outline" size="sm"><ExternalLink className="w-4 h-4" /></Button>
+                </Link>
+              </div>
+            </Card>
+          )}
+
+          {/* Custom fields — self-frames; renders nothing when empty */}
+          <DealCustomFieldsDisplay deal={deal} fields={customFieldDefs} />
+        </aside>
+      </div>
 
       {/* Mark lost modal */}
       <Modal open={showLostModal} onClose={() => setShowLostModal(false)} title="Mark deal as lost">

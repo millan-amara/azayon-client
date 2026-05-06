@@ -24,6 +24,13 @@ const PAGE_TITLES = {
   '/reports': 'Reports',
   '/automations': 'Automations',
   '/settings': 'Settings',
+  '/admin': 'Superadmin · Overview',
+  '/admin/orgs': 'Superadmin · Orgs',
+  '/admin/users': 'Superadmin · Users',
+  '/admin/deals': 'Superadmin · Deals',
+  '/admin/contacts': 'Superadmin · Contacts',
+  '/admin/billing': 'Superadmin · Billing',
+  '/admin/system': 'Superadmin · System',
 };
 
 function getTitle(pathname) {

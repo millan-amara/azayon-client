@@ -4,12 +4,13 @@ import {
   ArrowLeft, MessageCircle, Phone, Mail, Edit2, Trash2,
   Plus, Clock, FileText, PhoneCall, AtSign,
   Sparkles, Copy, Check, RefreshCw, X,
+  Building2, MapPin, Cake, Heart, CalendarDays, User as UserIcon,
 } from 'lucide-react';
 import { useContact, useUpdateContact, useAddTimeline, useTeam, useDeleteContact, useCustomFields } from '@/hooks/useData';
 import { useRole } from '@/hooks/useRole';
 import {
   Button, Card, Badge, Modal, Input, Select,
-  Textarea, Spinner, EmptyState
+  Textarea, Spinner, EmptyState, Avatar,
 } from '@/components/ui';
 import { Attachments } from '@/components/Attachments';
 import {
@@ -80,38 +81,58 @@ Write a 3-4 sentence briefing: who this person is, where things stand, what the 
     }
   };
 
-  return (
-    <div>
-      {!canUse('ai') ? (
-        <UpgradeButton feature="ai" label="AI Summary" />
-      ) : !visible ? (
-        <Button variant="outline" size="sm" onClick={generate}>
-          <Sparkles className="w-3.5 h-3.5 text-primary" /> AI Summary
-        </Button>
-      ) : (
-        <div className="border border-primary/20 rounded-xl bg-primary/5 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-primary" />
-              <span className="text-xs font-semibold text-primary">AI Summary</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button onClick={generate} className="p-1 rounded hover:bg-primary/10 transition-colors" title="Regenerate">
-                <RefreshCw className={cn('w-3.5 h-3.5 text-primary', loading && 'animate-spin')} />
-              </button>
-              <button onClick={() => setVisible(false)} className="p-1 rounded hover:bg-primary/10 transition-colors">
-                <X className="w-3.5 h-3.5 text-muted-foreground" />
-              </button>
-            </div>
-          </div>
-          {loading && !summary ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Spinner className="w-3 h-3" /> Analysing contact...
-            </div>
-          ) : (
-            <p className="text-sm text-foreground leading-relaxed">{summary}</p>
-          )}
+  // CTA state (no AI yet) and result state share the same framing so the
+  // sidebar slot stays a consistent shape regardless of whether the rep has
+  // generated a summary yet.
+  if (!canUse('ai')) {
+    return (
+      <div className="border border-dashed border-border rounded-xl p-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <Sparkles className="w-4 h-4 text-primary shrink-0" />
+          <p className="text-sm font-medium truncate">AI Summary</p>
         </div>
+        <UpgradeButton feature="ai" label="Upgrade" />
+      </div>
+    );
+  }
+
+  if (!visible) {
+    return (
+      <button
+        onClick={generate}
+        className="w-full text-left border border-dashed border-primary/30 hover:border-primary hover:bg-primary/5 rounded-xl p-4 transition-colors"
+      >
+        <div className="flex items-center gap-2 mb-1">
+          <Sparkles className="w-4 h-4 text-primary" />
+          <p className="text-sm font-semibold text-primary">AI Summary</p>
+        </div>
+        <p className="text-xs text-muted-foreground">Get a 3-line briefing on this contact before you reach out.</p>
+      </button>
+    );
+  }
+
+  return (
+    <div className="border border-primary/20 rounded-xl bg-primary/5 p-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-primary" />
+          <span className="text-xs font-semibold text-primary">AI Summary</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={generate} className="p-1 rounded hover:bg-primary/10 transition-colors" title="Regenerate">
+            <RefreshCw className={cn('w-3.5 h-3.5 text-primary', loading && 'animate-spin')} />
+          </button>
+          <button onClick={() => setVisible(false)} className="p-1 rounded hover:bg-primary/10 transition-colors">
+            <X className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+        </div>
+      </div>
+      {loading && !summary ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Spinner className="w-3 h-3" /> Analysing contact...
+        </div>
+      ) : (
+        <p className="text-sm text-foreground leading-relaxed">{summary}</p>
       )}
     </div>
   );
@@ -425,7 +446,30 @@ function EditContactModal({ open, onClose, contact }) {
   );
 }
 
-// Read-only block that shows custom field values on the contact detail card.
+// Compact icon + label/value row used throughout the right sidebar. Skips
+// itself when the value is empty so we don't render a half-blank info card.
+// `icon` is rendered JSX (e.g. `<Mail className="..." />`), passed by the
+// caller — keeps the API simple and dodges ESLint's JSX-as-variable confusion.
+function InfoRow({ icon, label, value, href }) {
+  if (value == null || value === '') return null;
+  const valueNode = href
+    ? <a href={href} className="text-sm font-medium text-foreground hover:text-primary truncate block" target={href.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer">{value}</a>
+    : <p className="text-sm font-medium text-foreground truncate">{value}</p>;
+  return (
+    <div className="flex items-start gap-3">
+      <span className="text-muted-foreground mt-0.5 shrink-0">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{label}</p>
+        {valueNode}
+      </div>
+    </div>
+  );
+}
+
+// Read-only block that shows custom field values. Returns null when there's
+// nothing to render — callers should NOT wrap it in a card themselves; this
+// component owns its own framing so the sidebar doesn't end up with empty
+// hollow cards.
 function CustomFieldsDisplay({ contact, fields }) {
   const values = readCustomFields(contact);
   // Only show fields that have a value
@@ -444,17 +488,17 @@ function CustomFieldsDisplay({ contact, fields }) {
   };
 
   return (
-    <div className="mt-4 pt-4 border-t border-border">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Additional info</p>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <Card className="p-5">
+      <h3 className="text-sm font-semibold mb-3">Additional info</h3>
+      <div className="space-y-3">
         {populated.map((f) => (
           <div key={f._id}>
-            <p className="text-xs text-muted-foreground">{f.label}</p>
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{f.label}</p>
             <p className="text-sm font-medium mt-0.5 truncate">{formatValue(f, values[f.key])}</p>
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -477,151 +521,235 @@ export default function ContactDetail() {
   if (!data) return <p className="text-center py-20 text-muted-foreground">Contact not found</p>;
 
   const { contact, deals = [], tasks = [] } = data;
+  const fullName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'Contact';
   const waUrl = getWhatsAppUrl(contact.phone, `Hi ${contact.firstName},`);
+  const openTasks = tasks.filter((t) => t.status !== 'completed');
+  const openDeals = deals.filter((d) => d.status === 'open');
+  const wonDeals = deals.filter((d) => d.status === 'won');
+  const totalWonValue = wonDeals.reduce((s, d) => s + (d.value || 0), 0);
+  const tabs = [
+    { id: 'timeline', label: 'Timeline', count: contact.timeline?.length || 0 },
+    { id: 'deals',    label: 'Deals',    count: deals.length },
+    { id: 'tasks',    label: 'Tasks',    count: tasks.length },
+    { id: 'files',    label: 'Files',    count: contact.attachments?.length || 0 },
+  ];
 
   return (
-    <div className="max-w-4xl space-y-6">
-      <button onClick={() => navigate('/contacts')} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+    <div className="max-w-6xl space-y-4">
+      {/* Back nav — sits flush above the hero so the page reads as one block */}
+      <button
+        onClick={() => navigate('/contacts')}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
         <ArrowLeft className="w-4 h-4" /> Back to contacts
       </button>
 
-      <Card className="p-6">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-xl font-bold text-primary">
-              {(contact.firstName?.[0] || '') + (contact.lastName?.[0] || '')}
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold">{contact.firstName} {contact.lastName}</h2>
-              {contact.jobTitle && <p className="text-sm text-muted-foreground">{contact.jobTitle}</p>}
-              {contact.company && <p className="text-sm text-muted-foreground">{contact.company}</p>}
-              <span className={cn('mt-2 inline-flex text-xs px-2 py-0.5 rounded-full font-medium capitalize', CONTACT_STATUS_COLORS[contact.status])}>
-                {contact.status}
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {waUrl && (
-              <a href={waUrl} target="_blank" rel="noopener noreferrer">
-                <Button variant="success" size="sm"><MessageCircle className="w-4 h-4" /> WhatsApp</Button>
-              </a>
-            )}
-            {contact.phone && <a href={`tel:${contact.phone}`}><Button variant="outline" size="sm"><Phone className="w-4 h-4" /> Call</Button></a>}
-            {contact.email && <a href={`mailto:${contact.email}`}><Button variant="outline" size="sm"><Mail className="w-4 h-4" /> Email</Button></a>}
-            {canUse('ai') ? (
-              <Button variant="outline" size="sm" onClick={() => setShowEmailDraft(true)}>
-                <Sparkles className="w-4 h-4 text-primary" /> Draft email
-              </Button>
-            ) : (
-              <UpgradeButton feature="ai" label="Draft email" />
-            )}
-            {canWrite && (
-              <Button variant="outline" size="sm" onClick={() => setShowEdit(true)}>
-                <Edit2 className="w-4 h-4" /> Edit
-              </Button>
-            )}
-            {canWrite && (
-              <Button variant="outline" size="sm" className="text-red-500 hover:bg-red-50 hover:border-red-200" onClick={() => setShowDelete(true)}>
-                <Trash2 className="w-4 h-4" /> Archive
-              </Button>
-            )}
-          </div>
-        </div>
+      {/* Identity hero — name, status and the three primary "do business" actions.
+          Edit / Archive moved to small icon buttons in the corner so they stop
+          competing with WhatsApp/Call/Email for visual weight. */}
+      <Card className="p-5 sm:p-6">
+        <div className="flex items-start gap-4 sm:gap-5">
+          <Avatar name={fullName} size="lg" className="!w-16 !h-16 !text-lg shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl font-semibold truncate">{fullName}</h1>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {[contact.jobTitle, contact.company].filter(Boolean).join(' · ') || '—'}
+                </p>
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  <span className={cn('inline-flex text-xs px-2 py-0.5 rounded-full font-medium capitalize', CONTACT_STATUS_COLORS[contact.status])}>
+                    {contact.status}
+                  </span>
+                  {(contact.tags || []).slice(0, 3).map((t) => (
+                    <Badge key={t} variant="secondary">{t}</Badge>
+                  ))}
+                  {(contact.tags?.length || 0) > 3 && (
+                    <span className="text-xs text-muted-foreground">+{contact.tags.length - 3} more</span>
+                  )}
+                </div>
+              </div>
 
-        <div className="mt-5 pt-4 border-t border-border">
-          <AISummaryPanel contact={contact} deals={deals} />
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-border">
-          {[
-            { label: 'Email', value: contact.email },
-            { label: 'Phone', value: contact.phone },
-            { label: 'Country', value: contact.country },
-            { label: 'Added', value: formatDate(contact.createdAt) },
-            { label: '🎂 Birthday',    value: contact.birthday    ? formatDate(contact.birthday)    : null },
-            { label: '💐 Anniversary', value: contact.anniversary ? formatDate(contact.anniversary) : null },
-          ].map(({ label, value }) => value && (
-            <div key={label}>
-              <p className="text-xs text-muted-foreground">{label}</p>
-              <p className="text-sm font-medium mt-0.5 truncate">{value}</p>
+              {/* Management actions — kept compact so the eye lands on the
+                  contact actions row below first */}
+              {canWrite && (
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="icon" onClick={() => setShowEdit(true)} title="Edit contact">
+                    <Edit2 className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="text-red-500 hover:bg-red-50" onClick={() => setShowDelete(true)} title="Archive contact">
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-        {contact.notes && (
-          <div className="mt-4 pt-4 border-t border-border">
-            <p className="text-xs text-muted-foreground mb-1">Notes</p>
-            <p className="text-sm text-muted-foreground">{contact.notes}</p>
+
+            {/* Primary contact actions — these are what reps use 80% of the time */}
+            <div className="flex flex-wrap gap-2 mt-4">
+              {waUrl && (
+                <a href={waUrl} target="_blank" rel="noopener noreferrer">
+                  <Button variant="success" size="sm"><MessageCircle className="w-4 h-4" /> WhatsApp</Button>
+                </a>
+              )}
+              {contact.phone && (
+                <a href={`tel:${contact.phone}`}>
+                  <Button variant="outline" size="sm"><Phone className="w-4 h-4" /> Call</Button>
+                </a>
+              )}
+              {contact.email && (
+                <a href={`mailto:${contact.email}`}>
+                  <Button variant="outline" size="sm"><Mail className="w-4 h-4" /> Email</Button>
+                </a>
+              )}
+              {canUse('ai') ? (
+                <Button variant="outline" size="sm" onClick={() => setShowEmailDraft(true)}>
+                  <Sparkles className="w-4 h-4 text-primary" /> Draft email
+                </Button>
+              ) : (
+                <UpgradeButton feature="ai" label="Draft email" />
+              )}
+            </div>
           </div>
-        )}
-        <CustomFieldsDisplay contact={contact} fields={customFieldDefs} />
+        </div>
       </Card>
 
-      <div className="flex gap-1 border-b border-border overflow-x-auto">
-        {[{ id: 'timeline', label: `Timeline (${contact.timeline?.length || 0})` }, { id: 'deals', label: `Deals (${deals.length})` }, { id: 'tasks', label: `Tasks (${tasks.length})` }, { id: 'files', label: `Files (${contact.attachments?.length || 0})` }]
-          .map((tab) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={cn('px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap',
-                activeTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
-              )}>
-              {tab.label}
-            </button>
-          ))}
+      {/* Quick stats — pulled out of the header so the numbers actually pop. Three
+          small tiles, no extra chrome. */}
+      <div className="grid grid-cols-3 gap-3">
+        <Card className="p-4">
+          <p className="text-xs text-muted-foreground font-medium">Open deals</p>
+          <p className="text-2xl font-semibold mt-1">{openDeals.length}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs text-muted-foreground font-medium">Lifetime value</p>
+          <p className="text-2xl font-semibold mt-1 truncate">{formatCurrency(totalWonValue, wonDeals[0]?.currency || 'KES')}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs text-muted-foreground font-medium">Open tasks</p>
+          <p className="text-2xl font-semibold mt-1">{openTasks.length}</p>
+        </Card>
       </div>
 
-      {activeTab === 'timeline' && (
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold">Activity</h3>
-            {canWrite && <Button size="sm" onClick={() => setShowLog(true)}><Plus className="w-4 h-4" /> Log activity</Button>}
-          </div>
-          {contact.timeline?.length > 0
-            ? <div className="space-y-0">{contact.timeline.map((e) => <TimelineEntry key={e._id} entry={e} />)}</div>
-            : <EmptyState icon={Clock} title="No activity yet" description="Log a call, note, or email to track interactions" />}
-        </Card>
-      )}
-
-      {activeTab === 'deals' && (
-        <div className="space-y-3">
-          {deals.length === 0 ? <Card className="p-6"><EmptyState icon={FileText} title="No deals" description="Create a deal from the Pipeline page" /></Card>
-            : deals.map((deal) => (
-              <Card key={deal._id} className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-sm">{deal.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{deal.stageName} · {formatCurrency(deal.value, deal.currency)}</p>
-                </div>
-                <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium capitalize', DEAL_STATUS_COLORS[deal.status])}>{deal.status}</span>
-              </Card>
-            ))}
-        </div>
-      )}
-
-      {activeTab === 'tasks' && (
-        <div className="space-y-3">
-          {tasks.length === 0 ? <Card className="p-6"><EmptyState icon={Clock} title="No tasks" description="Create tasks from the Tasks page" /></Card>
-            : tasks.map((task) => (
-              <Card key={task._id} className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-sm">{task.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{task.type} · Due {formatDate(task.dueDate)}</p>
-                </div>
-                <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium capitalize', task.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700')}>
-                  {task.status}
+      {/* Two-column body. Left = activity tabs, right = info + AI. Stacks on mobile. */}
+      <div className="grid lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 space-y-4">
+          {/* Tab strip */}
+          <div className="flex gap-1 border-b border-border overflow-x-auto">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  'px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap inline-flex items-center gap-1.5',
+                  activeTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {tab.label}
+                <span className={cn('text-xs px-1.5 py-0.5 rounded-md font-semibold',
+                  activeTab === tab.id ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                )}>
+                  {tab.count}
                 </span>
-              </Card>
+              </button>
             ))}
-        </div>
-      )}
+          </div>
 
-      {activeTab === 'files' && (
-        <Card className="p-6">
-          <h3 className="text-sm font-semibold mb-4">Files & attachments</h3>
-          <Attachments
-            resourceType="contact"
-            resourceId={id}
-            initialAttachments={contact.attachments || []}
-          />
-        </Card>
-      )}
+          {activeTab === 'timeline' && (
+            <Card className="p-5 sm:p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold">Activity</h3>
+                {canWrite && <Button size="sm" onClick={() => setShowLog(true)}><Plus className="w-4 h-4" /> Log activity</Button>}
+              </div>
+              {contact.timeline?.length > 0
+                ? <div className="space-y-0">{contact.timeline.map((e) => <TimelineEntry key={e._id} entry={e} />)}</div>
+                : <EmptyState icon={Clock} title="No activity yet" description="Log a call, note, or email to track interactions" />}
+            </Card>
+          )}
+
+          {activeTab === 'deals' && (
+            <div className="space-y-3">
+              {deals.length === 0
+                ? <Card className="p-6"><EmptyState icon={FileText} title="No deals" description="Create a deal from the Pipeline page" /></Card>
+                : deals.map((deal) => (
+                  <Link key={deal._id} to={`/deals/${deal._id}`} className="block">
+                    <Card className="p-4 flex items-center justify-between hover:border-primary/40 transition-colors">
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{deal.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {deal.stageName} · <span className="font-medium text-foreground">{formatCurrency(deal.value, deal.currency)}</span>
+                        </p>
+                      </div>
+                      <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium capitalize shrink-0 ml-3', DEAL_STATUS_COLORS[deal.status])}>{deal.status}</span>
+                    </Card>
+                  </Link>
+                ))}
+            </div>
+          )}
+
+          {activeTab === 'tasks' && (
+            <div className="space-y-3">
+              {tasks.length === 0
+                ? <Card className="p-6"><EmptyState icon={Clock} title="No tasks" description="Create tasks from the Tasks page" /></Card>
+                : tasks.map((task) => (
+                  <Card key={task._id} className="p-4 flex items-center justify-between">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">{task.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{task.type} · Due {formatDate(task.dueDate)}</p>
+                    </div>
+                    <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium capitalize shrink-0 ml-3',
+                      task.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700')}>
+                      {task.status}
+                    </span>
+                  </Card>
+                ))}
+            </div>
+          )}
+
+          {activeTab === 'files' && (
+            <Card className="p-5 sm:p-6">
+              <h3 className="text-sm font-semibold mb-4">Files & attachments</h3>
+              <Attachments
+                resourceType="contact"
+                resourceId={id}
+                initialAttachments={contact.attachments || []}
+              />
+            </Card>
+          )}
+        </div>
+
+        {/* Right sidebar — facts about the person, plus AI on top */}
+        <aside className="space-y-4">
+          {/* AI Summary — the single highest-value thing on the page when present.
+              Self-framed so the sidebar slot stays one consistent shape. */}
+          <AISummaryPanel contact={contact} deals={deals} />
+
+          {/* Contact info */}
+          <Card className="p-5">
+            <h3 className="text-sm font-semibold mb-4">Contact info</h3>
+            <div className="space-y-3.5">
+              <InfoRow icon={<Mail className="w-4 h-4" />} label="Email" value={contact.email} href={contact.email ? `mailto:${contact.email}` : undefined} />
+              <InfoRow icon={<Phone className="w-4 h-4" />} label="Phone" value={contact.phone} href={contact.phone ? `tel:${contact.phone}` : undefined} />
+              <InfoRow icon={<Building2 className="w-4 h-4" />} label="Company" value={contact.company} />
+              <InfoRow icon={<MapPin className="w-4 h-4" />} label="Location" value={[contact.city, contact.country].filter(Boolean).join(', ')} />
+              <InfoRow icon={<UserIcon className="w-4 h-4" />} label="Assigned to" value={contact.assignedTo?.name} />
+              <InfoRow icon={<Cake className="w-4 h-4" />} label="Birthday" value={contact.birthday ? formatDate(contact.birthday) : null} />
+              <InfoRow icon={<Heart className="w-4 h-4" />} label="Anniversary" value={contact.anniversary ? formatDate(contact.anniversary) : null} />
+              <InfoRow icon={<CalendarDays className="w-4 h-4" />} label="Added" value={formatDate(contact.createdAt)} />
+            </div>
+          </Card>
+
+          {/* Notes */}
+          {contact.notes && (
+            <Card className="p-5">
+              <h3 className="text-sm font-semibold mb-2">Notes</h3>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{contact.notes}</p>
+            </Card>
+          )}
+
+          {/* Custom fields — the helper handles its own card + empty-state */}
+          <CustomFieldsDisplay contact={contact} fields={customFieldDefs} />
+        </aside>
+      </div>
 
       <AddLogModal open={showLog} onClose={() => setShowLog(false)} contactId={id} />
       <EditContactModal open={showEdit} onClose={() => setShowEdit(false)} contact={contact} />
@@ -630,7 +758,7 @@ export default function ContactDetail() {
       <Modal open={showDelete} onClose={() => setShowDelete(false)} title="Archive contact">
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Are you sure you want to archive <strong>{contact.firstName} {contact.lastName}</strong>?
+            Are you sure you want to archive <strong>{fullName}</strong>?
             They will be removed from your contacts list. Their deals and tasks will be kept.
           </p>
           <div className="flex gap-3">

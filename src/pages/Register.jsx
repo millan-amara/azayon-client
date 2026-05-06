@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { Button, Input } from '@/components/ui';
+import { Button, Input, PasswordInput } from '@/components/ui';
 import SEO from '@/components/SEO';
 import toast from 'react-hot-toast';
 import { Mail } from 'lucide-react';
@@ -154,14 +154,50 @@ export default function Register() {
           <p className="text-sm text-muted-foreground mb-6">Set up your CRM in seconds</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Input label="Business name" placeholder="Acme Ltd" value={form.orgName} onChange={set('orgName')} required />
-            <Input label="Your name" placeholder="Jane Doe" value={form.name} onChange={set('name')} required />
-            <Input label="Email" type="email" placeholder="you@company.com" value={form.email} onChange={set('email')} required />
+            <Input
+              label="Business name"
+              placeholder="Acme Ltd"
+              value={form.orgName}
+              onChange={set('orgName')}
+              required
+              autoComplete="organization"
+              autoFocus
+            />
+            <Input
+              label="Your name"
+              placeholder="Jane Doe"
+              value={form.name}
+              onChange={set('name')}
+              required
+              autoComplete="name"
+            />
+            <Input
+              label="Email"
+              type="email"
+              placeholder="you@company.com"
+              value={form.email}
+              onChange={set('email')}
+              required
+              autoComplete="email"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              inputMode="email"
+            />
             <PhoneInput
               value={form.phone}
               onChange={(phone) => setForm((f) => ({ ...f, phone }))}
             />
-            <Input label="Password" type="password" placeholder="Min 6 characters" value={form.password} onChange={set('password')} required />
+            <PasswordInput
+              label="Password"
+              placeholder="Min 6 characters"
+              value={form.password}
+              onChange={set('password')}
+              required
+              autoComplete="new-password"
+              minLength={6}
+              hint="Use at least 6 characters. A short phrase you'll remember works well."
+            />
             <Button type="submit" className="w-full" loading={loading}>
               Create account
             </Button>

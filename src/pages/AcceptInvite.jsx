@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { CheckCircle, XCircle } from 'lucide-react';
-import { Button, Input } from '@/components/ui';
+import { Button, PasswordInput } from '@/components/ui';
 import SEO from '@/components/SEO';
 import api from '@/lib/api';
 
@@ -82,24 +82,33 @@ export default function AcceptInvite() {
                 Set a password to activate your account and join your team.
               </p>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <Input
+                <PasswordInput
                   label="Password"
-                  type="password"
                   placeholder="Min 6 characters"
                   value={form.password}
                   onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                   required
+                  autoComplete="new-password"
+                  minLength={6}
+                  autoFocus
                 />
-                <Input
+                <PasswordInput
                   label="Confirm password"
-                  type="password"
                   placeholder="Repeat your password"
                   value={form.confirm}
                   onChange={(e) => setForm((f) => ({ ...f, confirm: e.target.value }))}
                   required
+                  autoComplete="new-password"
+                  error={form.confirm && form.password !== form.confirm ? "Passwords don't match" : undefined}
+                  hint={form.confirm && form.password === form.confirm ? '✓ Passwords match' : undefined}
                 />
                 {error && <p className="text-sm text-destructive">{error}</p>}
-                <Button type="submit" className="w-full" loading={loading}>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  loading={loading}
+                  disabled={!form.password || form.password !== form.confirm}
+                >
                   Activate account
                 </Button>
               </form>

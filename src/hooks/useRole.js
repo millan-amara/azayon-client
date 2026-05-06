@@ -10,5 +10,6 @@ export function useRole() {
     isSalesRep: role === 'sales_rep',
     isViewer: role === 'viewer',
     canWrite: role === 'admin' || role === 'sales_rep',
+    isSuperadmin: !!user?.isSuperadmin,
   };
 }

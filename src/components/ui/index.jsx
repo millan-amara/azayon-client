@@ -1,5 +1,6 @@
+import { useState, forwardRef, useId } from 'react';
 import { cn, getInitials } from '@/lib/utils';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Eye, EyeOff } from 'lucide-react';
 
 // ─── BUTTON ──────────────────────────────────────────────────────────────────
 export function Button({ variant = 'default', size = 'md', className, loading, children, ...props }) {
@@ -47,6 +48,75 @@ export function Input({ label, error, className, ...props }) {
     </div>
   );
 }
+
+// ─── PASSWORD INPUT ──────────────────────────────────────────────────────────
+// Same look + feel as <Input>, plus an eye toggle to reveal the value and a
+// Caps-Lock hint that appears when caps is on while the field is focused.
+// Use `labelRight` for the optional right-aligned label slot (e.g. the
+// "Forgot password?" link on the login form).
+export const PasswordInput = forwardRef(function PasswordInput(
+  { label, labelRight, error, hint, className, onKeyUp, onKeyDown, onBlur, ...props },
+  ref
+) {
+  const [shown, setShown] = useState(false);
+  const [capsOn, setCapsOn] = useState(false);
+  const id = useId();
+
+  // getModifierState is the cleanest way to read Caps-Lock; both keyup and
+  // keydown handlers run because the very first keystroke that toggles caps
+  // can fire on either event depending on browser/OS.
+  const checkCaps = (e) => {
+    if (typeof e?.getModifierState === 'function') {
+      setCapsOn(e.getModifierState('CapsLock'));
+    }
+  };
+
+  return (
+    <div className="space-y-1.5">
+      {(label || labelRight) && (
+        <div className="flex items-center justify-between">
+          {label ? (
+            <label htmlFor={id} className="text-sm font-medium text-foreground">{label}</label>
+          ) : <span />}
+          {labelRight}
+        </div>
+      )}
+      <div className="relative">
+        <input
+          id={id}
+          ref={ref}
+          type={shown ? 'text' : 'password'}
+          onKeyUp={(e) => { checkCaps(e); onKeyUp?.(e); }}
+          onKeyDown={(e) => { checkCaps(e); onKeyDown?.(e); }}
+          onBlur={(e) => { setCapsOn(false); onBlur?.(e); }}
+          className={cn(
+            'flex h-9 w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+            error && 'border-destructive',
+            className
+          )}
+          {...props}
+        />
+        <button
+          type="button"
+          onClick={() => setShown((s) => !s)}
+          // tabIndex -1 keeps the eye out of the tab order so password managers
+          // and keyboard users hit Submit on the next Tab, not this button.
+          tabIndex={-1}
+          aria-label={shown ? 'Hide password' : 'Show password'}
+          aria-pressed={shown}
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {shown ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </div>
+      {capsOn && !error && (
+        <p className="text-xs text-amber-600">Caps Lock is on</p>
+      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      {hint && !error && !capsOn && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+});
 
 // ─── TEXTAREA ────────────────────────────────────────────────────────────────
 export function Textarea({ label, error, className, ...props }) {

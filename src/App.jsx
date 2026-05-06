@@ -31,6 +31,16 @@ const PublicDocument  = lazy(() => import('@/pages/PublicDocument'));
 const Reports         = lazy(() => import('@/pages/Reports'));
 const Customers       = lazy(() => import('@/pages/Customers'));
 
+// Superadmin (cross-tenant) — only ever loaded for platform admins.
+const AdminLayout     = lazy(() => import('@/pages/admin/AdminLayout'));
+const AdminOverview   = lazy(() => import('@/pages/admin/Overview'));
+const AdminOrgs       = lazy(() => import('@/pages/admin/Orgs'));
+const AdminUsers      = lazy(() => import('@/pages/admin/Users'));
+const AdminDeals      = lazy(() => import('@/pages/admin/Deals'));
+const AdminContacts   = lazy(() => import('@/pages/admin/Contacts'));
+const AdminBilling    = lazy(() => import('@/pages/admin/Billing'));
+const AdminSystem     = lazy(() => import('@/pages/admin/System'));
+
 // Centered spinner while a lazy chunk is loading.
 function RouteFallback() {
   return (
@@ -104,6 +114,15 @@ function AppRoutes() {
         <Route path="reports" element={<Reports />} />
         <Route path="automations" element={<Automations />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="admin" element={<AdminLayout />}>
+          <Route index element={<AdminOverview />} />
+          <Route path="orgs" element={<AdminOrgs />} />
+          <Route path="users" element={<AdminUsers />} />
+          <Route path="deals" element={<AdminDeals />} />
+          <Route path="contacts" element={<AdminContacts />} />
+          <Route path="billing" element={<AdminBilling />} />
+          <Route path="system" element={<AdminSystem />} />
+        </Route>
       </Route>
       <Route path="*" element={<Navigate to="/pipeline" replace />} />
     </Routes>

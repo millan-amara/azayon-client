@@ -72,6 +72,12 @@ export default function ForgotPassword() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  autoComplete="email"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  inputMode="email"
+                  autoFocus
                 />
                 <Button type="submit" className="w-full" loading={loading}>
                   Send reset link

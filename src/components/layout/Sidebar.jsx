@@ -1,10 +1,11 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, KanbanSquare, CheckSquare,
-  Zap, Settings, X, Receipt, BarChart3, Crown,
+  Zap, Settings, X, Receipt, BarChart3, Crown, Shield,
 } from 'lucide-react';
 import { cn, getInitials } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useRole } from '@/hooks/useRole';
 
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
@@ -20,6 +21,7 @@ const NAV = [
 
 export default function Sidebar({ open, onClose }) {
   const { user, org } = useAuth();
+  const { isSuperadmin } = useRole();
   const location = useLocation();
 
   return (
@@ -94,6 +96,44 @@ export default function Sidebar({ open, onClose }) {
               </NavLink>
             );
           })}
+
+          {isSuperadmin && (
+            <>
+              <div
+                className="mt-3 mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider"
+                style={{ color: 'hsl(220 15% 50%)' }}
+              >
+                Platform
+              </div>
+              {(() => {
+                const to = '/admin';
+                const active = location.pathname === to || location.pathname.startsWith('/admin/');
+                return (
+                  <NavLink
+                    to={to}
+                    onClick={onClose}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                      active ? 'text-white' : 'hover:text-white'
+                    )}
+                    style={{
+                      color: active ? 'white' : 'var(--color-sidebar-foreground)',
+                      backgroundColor: active ? 'var(--color-primary)' : 'transparent',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!active) e.currentTarget.style.backgroundColor = 'var(--color-sidebar-muted)';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!active) e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    <Shield className="w-4 h-4 shrink-0" />
+                    <span>Superadmin</span>
+                  </NavLink>
+                );
+              })()}
+            </>
+          )}
         </nav>
 
         {/* User */}

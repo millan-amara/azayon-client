@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { Button, Input } from '@/components/ui';
+import { Button, PasswordInput } from '@/components/ui';
 import SEO from '@/components/SEO';
 import { CheckCircle, XCircle } from 'lucide-react';
 import api from '@/lib/api';
@@ -85,26 +85,36 @@ export default function ResetPassword() {
               <p className="text-sm text-muted-foreground mb-6">Choose a strong password for your account.</p>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                <Input
+                <PasswordInput
                   label="New password"
-                  type="password"
                   placeholder="Min 6 characters"
                   value={form.password}
                   onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                   required
+                  autoComplete="new-password"
+                  minLength={6}
+                  autoFocus
                 />
-                <Input
+                <PasswordInput
                   label="Confirm password"
-                  type="password"
                   placeholder="Repeat your password"
                   value={form.confirm}
                   onChange={(e) => setForm((f) => ({ ...f, confirm: e.target.value }))}
                   required
+                  autoComplete="new-password"
+                  // Live mismatch hint — surfaces the problem before the user clicks submit.
+                  error={form.confirm && form.password !== form.confirm ? "Passwords don't match" : undefined}
+                  hint={form.confirm && form.password === form.confirm ? '✓ Passwords match' : undefined}
                 />
                 {error && (
                   <p className="text-sm text-destructive">{error}</p>
                 )}
-                <Button type="submit" className="w-full" loading={loading}>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  loading={loading}
+                  disabled={!form.password || form.password !== form.confirm}
+                >
                   Reset password
                 </Button>
               </form>
