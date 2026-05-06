@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Button, Input } from '@/components/ui';
 import SEO from '@/components/SEO';
-import { Building2, CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle, XCircle } from 'lucide-react';
 import api from '@/lib/api';
 
 export default function ResetPassword() {
@@ -61,9 +61,7 @@ export default function ResetPassword() {
       />
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
-            <Building2 className="w-5 h-5 text-white" />
-          </div>
+          <img src="/icon-mark.svg" alt="" className="w-9 h-9" />
           <span className="text-xl font-bold">{import.meta.env.VITE_APP_NAME || 'Azayon'}</span>
         </div>
 

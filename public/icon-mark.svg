@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <!--
-    Browser-tab favicon. Same Azayon glyph as icon-mark.svg / icon-maskable.svg
-    so the brand reads consistently in the URL bar, the PWA install card, and
-    inside the app sidebar.
+    Azayon brand mark.
+    Same glyph as icon-maskable.svg; smaller padding because this is the
+    in-UI logo (sidebar, marketing nav, footer), not a PWA home-screen icon.
   -->
   <rect width="64" height="64" rx="14" fill="#0F5132"/>
   <g transform="translate(13.5 14.5) scale(0.146)">

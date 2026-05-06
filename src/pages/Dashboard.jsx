@@ -134,7 +134,11 @@ export default function Dashboard() {
         <StatCard
           label="Tasks overdue"
           value={d.tasks?.overdue || 0}
-          sub={`${d.tasks?.dueToday || 0} due today`}
+          // Headline is overdue; subtitle adds context. When overdue > 0,
+          // "needs attention" reinforces the alert state (and avoids the
+          // confusing "0 due today" sitting under a "2 overdue" number).
+          // When overdue is 0, the "due today" count is useful look-ahead info.
+          sub={d.tasks?.overdue > 0 ? 'Needs attention' : `${d.tasks?.dueToday || 0} due today`}
           icon={d.tasks?.overdue > 0 ? AlertCircle : CheckSquare}
           color={d.tasks?.overdue > 0 ? 'red' : 'amber'}
         />

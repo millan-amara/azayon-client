@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, KanbanSquare, CheckSquare,
-  Zap, Settings, X, Building2, Receipt, BarChart3, Crown,
+  Zap, Settings, X, Receipt, BarChart3, Crown,
 } from 'lucide-react';
 import { cn, getInitials } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -45,9 +45,7 @@ export default function Sidebar({ open, onClose }) {
           style={{ borderColor: 'var(--color-sidebar-muted)' }}
         >
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-              <Building2 className="w-4 h-4 text-white" />
-            </div>
+            <img src="/icon-mark.svg" alt="" className="w-8 h-8 shrink-0" />
             <div className="min-w-0">
               <p className="text-sm font-semibold truncate" style={{ color: 'var(--color-sidebar-foreground)' }}>
                 {org?.name || 'Azayon'}

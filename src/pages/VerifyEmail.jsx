@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Building2, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 
 export default function VerifyEmail() {
@@ -32,9 +32,7 @@ export default function VerifyEmail() {
     <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: 'hsl(220 20% 97%)' }}>
       <div className="w-full max-w-sm text-center">
         <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
-            <Building2 className="w-5 h-5 text-white" />
-          </div>
+          <img src="/icon-mark.svg" alt="" className="w-9 h-9" />
           <span className="text-xl font-bold">{import.meta.env.VITE_APP_NAME || 'Azayon'}</span>
         </div>
 
