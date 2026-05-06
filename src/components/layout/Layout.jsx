@@ -137,6 +137,12 @@ export default function Layout() {
     !onboarding?.completed &&
     !onboarding?.skipped;
 
+  // Keep the browser tab title in sync with the current page so it never
+  // gets stuck on the static "Azayon CRM" default once a user is signed in.
+  useEffect(() => {
+    document.title = title === 'Azayon' ? 'Azayon CRM' : `${title} · Azayon`;
+  }, [title]);
+
   // Subscribe this session to realtime events from teammates
   useRealtimeSync();
 

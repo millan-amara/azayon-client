@@ -1,12 +1,16 @@
-import { useState } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft, MessageCircle, ExternalLink, Sparkles,
   RefreshCw, X, Paperclip, Trophy, XCircle, Edit2, Trash2,
   Calendar, Percent, User as UserIcon, Clock,
-  Phone, Mail,
+  Phone, Mail, MessageSquare, Send,
 } from 'lucide-react';
-import { useDeal, useMarkDealWon, useMarkDealLost, useUpdateDeal, useTeam, useDeleteDeal, useCustomFields } from '@/hooks/useData';
+import {
+  useDeal, useMarkDealWon, useMarkDealLost, useUpdateDeal, useTeam, useDeleteDeal,
+  useCustomFields, useAddDealComment, useDeleteDealComment,
+} from '@/hooks/useData';
+import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/hooks/useRole';
 import { Button, Card, Modal, Input, Select, Textarea, Spinner, Avatar } from '@/components/ui';
 import { Attachments } from '@/components/Attachments';
@@ -336,6 +340,217 @@ function StageHistoryTimeline({ history = [] }) {
   );
 }
 
+// ─── COMMENTS ────────────────────────────────────────────────────────────────
+
+// Render plain text with @mentions visually highlighted. React escapes by
+// default — we never use dangerouslySetInnerHTML — so this is safe even when
+// a comment contains `<script>` or HTML-like input.
+function renderCommentBody(body) {
+  const parts = (body || '').split(/(@\w+)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('@') && part.length > 1) {
+      return <span key={i} className="text-primary font-medium bg-primary/5 rounded px-0.5">{part}</span>;
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
+function CommentsSection({ deal, comments }) {
+  const { user } = useAuth();
+  const { canWrite } = useRole();
+  const { data: teamData } = useTeam();
+  const teamMembers = useMemo(
+    () => (teamData?.users || []).filter((u) => u.isActive !== false),
+    [teamData]
+  );
+  const { mutateAsync: addComment, isPending: posting } = useAddDealComment();
+  const { mutate: deleteComment } = useDeleteDealComment();
+
+  const [text, setText] = useState('');
+  // Track who the user has mentioned in *this* draft so we can attach the right
+  // userIds when they submit. Cleared after post.
+  const [mentionedIds, setMentionedIds] = useState(() => new Set());
+  // {text, startIndex} when the cursor is sitting in an unfinished `@…` token.
+  const [mentionQuery, setMentionQuery] = useState(null);
+  const textareaRef = useRef(null);
+
+  // Filter team members for the mention popover. Excludes self — pinging
+  // yourself is just noise.
+  const candidates = useMemo(() => {
+    if (!mentionQuery) return [];
+    const q = mentionQuery.text.toLowerCase();
+    return teamMembers
+      .filter((u) => String(u._id) !== String(user._id))
+      .filter((u) => !q || (u.name || '').toLowerCase().includes(q))
+      .slice(0, 5);
+  }, [mentionQuery, teamMembers, user._id]);
+
+  const handleChange = (e) => {
+    const value = e.target.value;
+    setText(value);
+
+    // Detect cursor inside an unfinished @mention. We only show the popover
+    // when the @ is fresh (still being typed) — once the user types a space,
+    // the regex stops matching and the popover hides.
+    const cursor = e.target.selectionStart;
+    const beforeCursor = value.slice(0, cursor);
+    const match = beforeCursor.match(/@([\w]*)$/);
+    if (match) {
+      setMentionQuery({ text: match[1], startIndex: cursor - match[0].length });
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
+  const insertMention = (u) => {
+    // Use first name only — the popover already disambiguates multi-word names.
+    const handle = (u.name || '').split(/\s+/)[0];
+    const before = text.slice(0, mentionQuery.startIndex);
+    const after = text.slice(mentionQuery.startIndex + 1 + mentionQuery.text.length);
+    const insert = `@${handle} `;
+    const newText = `${before}${insert}${after}`;
+    setText(newText);
+    setMentionedIds((s) => new Set(s).add(String(u._id)));
+    setMentionQuery(null);
+    // Restore caret position after the inserted mention so typing continues
+    // naturally without a flash of cursor-at-end.
+    requestAnimationFrame(() => {
+      const pos = before.length + insert.length;
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(pos, pos);
+      }
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const body = text.trim();
+    if (!body) return;
+
+    // Filter mentionedIds to those whose @handle still appears in the final
+    // text — if the user typed @Jane then deleted it, Jane shouldn't get pinged.
+    const lower = body.toLowerCase();
+    const stillMentioned = [...mentionedIds].filter((id) => {
+      const u = teamMembers.find((t) => String(t._id) === id);
+      if (!u) return false;
+      const handle = (u.name || '').split(/\s+/)[0].toLowerCase();
+      return !!handle && lower.includes('@' + handle);
+    });
+
+    try {
+      await addComment({ dealId: deal._id, body, mentions: stillMentioned });
+      setText('');
+      setMentionedIds(new Set());
+    } catch {
+      // Error toast is handled by the mutation hook
+    }
+  };
+
+  const handleDelete = (commentId) => {
+    if (!window.confirm('Delete this comment?')) return;
+    deleteComment({ dealId: deal._id, commentId });
+  };
+
+  // Newest first — matches the contact timeline pattern users already know.
+  const sorted = [...(comments || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  return (
+    <Card className="p-5 sm:p-6">
+      <div className="flex items-center gap-2 mb-4">
+        <MessageSquare className="w-4 h-4 text-muted-foreground" />
+        <h3 className="text-sm font-semibold">
+          Comments
+          {sorted.length > 0 && <span className="text-muted-foreground font-normal"> · {sorted.length}</span>}
+        </h3>
+      </div>
+
+      {/* Composer — hidden for viewers */}
+      {canWrite && (
+        <form onSubmit={handleSubmit} className="space-y-2 mb-5">
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={handleChange}
+              placeholder="Leave context for the team. Type @ to mention a teammate."
+              rows={3}
+              maxLength={2000}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+            />
+
+            {/* Mention popover. Anchored beneath the textarea — small enough
+                to not need portal-positioning logic. */}
+            {mentionQuery && candidates.length > 0 && (
+              <div className="absolute z-10 left-0 sm:w-72 mt-1 bg-background border border-border rounded-lg shadow-lg overflow-hidden">
+                {candidates.map((u) => (
+                  <button
+                    key={u._id}
+                    type="button"
+                    onClick={() => insertMention(u)}
+                    className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-muted transition-colors"
+                  >
+                    <Avatar name={u.name} size="xs" />
+                    <span className="text-sm truncate">{u.name}</span>
+                    {u.role && (
+                      <span className="ml-auto text-xs text-muted-foreground">{u.role.replace('_', ' ')}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              {text.length > 0 ? `${text.length}/2000` : 'Tip: @name to notify a teammate'}
+            </p>
+            <Button type="submit" size="sm" loading={posting} disabled={!text.trim()}>
+              <Send className="w-3.5 h-3.5" /> Post
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {/* Comment list */}
+      {sorted.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-6">
+          No comments yet.{canWrite ? ' Drop a note for your team.' : ''}
+        </p>
+      ) : (
+        <ul className="space-y-4">
+          {sorted.map((c) => {
+            const isMine = String(c.createdBy?._id) === String(user._id);
+            const canDelete = canWrite && (isMine || user.role === 'admin');
+            return (
+              <li key={c._id} className="flex gap-3">
+                <Avatar name={c.createdBy?.name} src={c.createdBy?.avatar} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-sm font-medium truncate">{c.createdBy?.name || 'Someone'}</p>
+                    <p className="text-xs text-muted-foreground shrink-0">{timeAgo(c.createdAt)}</p>
+                    {canDelete && (
+                      <button
+                        onClick={() => handleDelete(c._id)}
+                        className="ml-auto p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors"
+                        title="Delete comment"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed mt-0.5">
+                    {renderCommentBody(c.body)}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export default function DealDetail() {
@@ -477,6 +692,9 @@ export default function DealDetail() {
               <StageHistoryTimeline history={deal.stageHistory} />
             </Card>
           )}
+
+          {/* Comments — internal team thread on this deal */}
+          <CommentsSection deal={deal} comments={deal.comments} />
 
           {/* Files */}
           <Card className="p-5 sm:p-6">

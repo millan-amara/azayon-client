@@ -191,6 +191,30 @@ export function useDeleteDeal() {
   });
 }
 
+export function useAddDealComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ dealId, body, mentions }) =>
+      api.post(`/deals/${dealId}/comments`, { body, mentions }).then((r) => r.data),
+    onSuccess: (_, { dealId }) => {
+      qc.invalidateQueries({ queryKey: ['deal', dealId] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to post comment'),
+  });
+}
+
+export function useDeleteDealComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ dealId, commentId }) =>
+      api.delete(`/deals/${dealId}/comments/${commentId}`).then((r) => r.data),
+    onSuccess: (_, { dealId }) => {
+      qc.invalidateQueries({ queryKey: ['deal', dealId] });
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to delete comment'),
+  });
+}
+
 // ─── PIPELINES ───────────────────────────────────────────────────────────────
 
 export function usePipelines() {
