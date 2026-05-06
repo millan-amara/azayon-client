@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { Building2, Download, CreditCard, CheckCircle2, Loader2, FileText } from 'lucide-react';
 import { Button } from '@/components/ui';
+import SEO from '@/components/SEO';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
 
 const STATUS_COLORS = {
@@ -114,6 +115,14 @@ export default function PublicDocument() {
 
   return (
     <div className="min-h-screen bg-muted/30 py-8 px-4">
+      {/* Token-share links shouldn't be indexed — they're private and signed.
+          We still set a useful title so a recipient sees "Invoice INV-001 from Acme"
+          in their browser tab and link previews. */}
+      <SEO
+        title={`${isInvoice ? 'Invoice' : doc.type ? doc.type.charAt(0).toUpperCase() + doc.type.slice(1) : 'Document'} ${doc.number || ''}${doc.fromBusinessName ? ` from ${doc.fromBusinessName}` : ''}`.trim()}
+        description={`${isInvoice ? 'Invoice' : 'Document'} ${doc.number || ''} from ${doc.fromBusinessName || 'Azayon'}.`}
+        noindex
+      />
       <div className="max-w-2xl mx-auto space-y-4">
         {/* Just-paid banner — copy reflects verification state */}
         {justPaid && (

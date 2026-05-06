@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Input } from '@/components/ui';
+import SEO from '@/components/SEO';
 import toast from 'react-hot-toast';
 import { Building2, Mail } from 'lucide-react';
 import api from '@/lib/api';
@@ -137,6 +138,11 @@ export default function Register() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-8" style={{ backgroundColor: 'hsl(220 20% 97%)' }}>
+      <SEO
+        title="Create your account · Azayon CRM"
+        description="Start your 7-day free trial of Azayon — the CRM built for African businesses. KES 3,000/month after trial. No credit card required."
+        canonical="https://app.azayon.com/register"
+      />
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">

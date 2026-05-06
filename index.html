@@ -3,12 +3,50 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Azayon CRM</title>
-    <meta name="description" content="A simple CRM for African small businesses — pipeline, invoices, automations." />
 
-    <!-- PWA -->
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- ─── Primary SEO ──────────────────────────────────────────────────── -->
+    <!-- Per-route titles/descriptions are set at runtime by src/components/SEO.jsx;
+         the static values below cover the bot's first-look + when JS is disabled. -->
+    <title>Azayon CRM — Sign in</title>
+    <meta name="description" content="Sign in to Azayon — the CRM built for African businesses. Manage your pipeline, contacts, invoices and automations." />
+    <link rel="canonical" href="https://app.azayon.com/" />
+    <!-- App pages should not steal SEO weight from the marketing site at azayon.com.
+         Allow indexing of the login/register entry points but discourage anything
+         deeper (the SPA serves the same HTML for every URL anyway). -->
+    <meta name="robots" content="index, follow, noarchive" />
     <meta name="theme-color" content="#5046e4" />
+
+    <!-- ─── Open Graph / Twitter ─────────────────────────────────────────── -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Azayon" />
+    <meta property="og:title" content="Azayon CRM" />
+    <meta property="og:description" content="The CRM built for African businesses. Pipeline, invoices, automations." />
+    <meta property="og:url" content="https://app.azayon.com/" />
+    <meta property="og:image" content="https://azayon.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Azayon CRM" />
+    <meta name="twitter:description" content="The CRM built for African businesses." />
+    <meta name="twitter:image" content="https://azayon.com/og-image.png" />
+
+    <!-- ─── Structured data — Organization only (the marketing site at
+         azayon.com carries the full SoftwareApplication / FAQ / WebSite
+         schemas; duplicating them here would confuse Google about which
+         page is canonical). ──────────────────────────────────────────────── -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Azayon",
+      "legalName": "Peskaya Limited",
+      "url": "https://azayon.com/",
+      "logo": "https://azayon.com/logo.png"
+    }
+    </script>
+
+    <!-- ─── PWA ──────────────────────────────────────────────────────────── -->
+    <link rel="manifest" href="/manifest.webmanifest" />
     <!-- Standardised name (Chrome / Edge / Firefox / modern iOS) -->
     <meta name="mobile-web-app-capable" content="yes" />
     <!-- Apple-prefixed fallback for older iOS Safari -->
@@ -16,11 +54,21 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Azayon" />
 
-    <!-- Icons -->
+    <!-- ─── Icons ────────────────────────────────────────────────────────── -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icon-maskable.svg" />
   </head>
   <body>
+    <!-- Crawler-friendly fallback. Search engines and link previews that don't
+         execute JS still see a meaningful sentence + the marketing site link
+         instead of an empty <div>. Hidden from human users on JS-enabled
+         browsers — main.jsx replaces #root immediately. -->
+    <noscript>
+      <div style="font-family: system-ui, sans-serif; max-width: 560px; margin: 80px auto; padding: 24px; line-height: 1.5;">
+        <h1 style="margin: 0 0 8px;">Azayon CRM</h1>
+        <p>Azayon needs JavaScript to run. Enable JavaScript and refresh, or visit <a href="https://azayon.com/">azayon.com</a> to learn more about the product.</p>
+      </div>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

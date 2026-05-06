@@ -1,0 +1,32 @@
+# Azayon app subdomain (app.azayon.com)
+#
+# This is a single-page CRM behind authentication. Most paths return the same
+# index.html shell; the actual content is private user data fetched via API
+# after sign-in. Allow only the public entry points (login, register, password
+# flows, public document share links) — everything else is noise for crawlers.
+
+User-agent: *
+
+# Public entry points
+Allow: /
+Allow: /login
+Allow: /register
+Allow: /forgot-password
+Allow: /reset-password
+Allow: /verify-email
+Allow: /accept-invite
+Allow: /i/
+
+# Authenticated app — private user data, no useful SEO content
+Disallow: /api/
+Disallow: /contacts
+Disallow: /customers
+Disallow: /pipeline
+Disallow: /deals
+Disallow: /tasks
+Disallow: /documents
+Disallow: /reports
+Disallow: /automations
+Disallow: /settings
+
+Sitemap: https://app.azayon.com/sitemap.xml

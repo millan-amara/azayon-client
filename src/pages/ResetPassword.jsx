@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Button, Input } from '@/components/ui';
+import SEO from '@/components/SEO';
 import { Building2, CheckCircle, XCircle } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -52,6 +53,12 @@ export default function ResetPassword() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: 'hsl(220 20% 97%)' }}>
+      <SEO
+        title="Reset password · Azayon"
+        description="Set a new password for your Azayon account."
+        canonical="https://app.azayon.com/reset-password"
+        noindex
+      />
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Input } from '@/components/ui';
+import SEO from '@/components/SEO';
 import toast from 'react-hot-toast';
 import { Building2 } from 'lucide-react';
 
@@ -24,6 +25,11 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: 'hsl(220 20% 97%)' }}>
+      <SEO
+        title="Sign in · Azayon CRM"
+        description="Sign in to Azayon — the CRM built for African businesses. Manage your pipeline, contacts, invoices and automations."
+        canonical="https://app.azayon.com/login"
+      />
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
