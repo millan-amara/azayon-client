@@ -947,7 +947,7 @@ export default function Pipeline() {
 
       {/* Kanban board */}
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="flex flex-1 min-h-0 gap-4 overflow-auto pb-4 kanban-scroll -mx-6 px-6">
+        <div className="flex flex-1 min-h-0 items-start gap-4 overflow-auto pb-4 kanban-scroll -mx-6 px-6">
           {filteredKanban.map(({ stage, deals, totalValue }) => (
             <div key={stage._id} className="shrink-0 w-64">
               {/* Column header — sticky so it stays visible while you drag a
