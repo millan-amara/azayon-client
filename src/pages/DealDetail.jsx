@@ -5,16 +5,18 @@ import {
   RefreshCw, X, Paperclip, Trophy, XCircle, Edit2, Trash2,
   Calendar, Percent, User as UserIcon, Clock,
   Phone, Mail, MessageSquare, Send,
+  CheckSquare, Square, ListTodo,
 } from 'lucide-react';
 import {
   useDeal, useMarkDealWon, useMarkDealLost, useUpdateDeal, useTeam, useDeleteDeal,
   useCustomFields, useAddDealComment, useDeleteDealComment,
+  useTasks, useCreateTask, useUpdateTask, useDeleteTask,
 } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/hooks/useRole';
 import { Button, Card, Modal, Input, Select, Textarea, Spinner, Avatar } from '@/components/ui';
 import { Attachments } from '@/components/Attachments';
-import { formatCurrency, formatDate, timeAgo, DEAL_STATUS_COLORS, getWhatsAppUrl, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, timeAgo, dueDateLabel, DEAL_STATUS_COLORS, getWhatsAppUrl, cn } from '@/lib/utils';
 import { callClaudeStream } from '@/lib/ai';
 import toast from 'react-hot-toast';
 
@@ -551,6 +553,146 @@ function CommentsSection({ deal, comments }) {
   );
 }
 
+// ─── TASKS ON THIS DEAL ───────────────────────────────────────────────────────
+// Inline list + quick-add. Reuses the existing Task model, which already has a
+// `deal` ref and an index on it — so tasks created here also show up on the
+// global /tasks page, and (because we link the deal's contact too) on the
+// linked contact's page. Full editing (recurrence, reminders, type, priority)
+// stays on the main /tasks page; this section is just for fast capture and
+// completion in the deal context.
+function DealTasksSection({ dealId, contactId }) {
+  const { user } = useAuth();
+  const { data, isLoading } = useTasks({ dealId, limit: 100 });
+  const tasks = data?.tasks || [];
+  const open = tasks.filter((t) => t.status !== 'completed' && t.status !== 'cancelled');
+  const done = tasks.filter((t) => t.status === 'completed');
+
+  const [showDone, setShowDone] = useState(false);
+  const [quickTitle, setQuickTitle] = useState('');
+  const create = useCreateTask();
+  const update = useUpdateTask();
+  const remove = useDeleteTask();
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    const title = quickTitle.trim();
+    if (!title) return;
+    setQuickTitle('');
+    await create.mutateAsync({
+      title,
+      deal: dealId,
+      contact: contactId,
+      assignedTo: user._id,
+      type: 'follow_up',
+      priority: 'medium',
+    });
+  };
+
+  const toggle = (task) => {
+    update.mutate({
+      id: task._id,
+      status: task.status === 'completed' ? 'pending' : 'completed',
+    });
+  };
+
+  return (
+    <Card className="p-5 sm:p-6">
+      <div className="flex items-center gap-2 mb-3">
+        <ListTodo className="w-4 h-4 text-muted-foreground" />
+        <h3 className="text-sm font-semibold">
+          Tasks
+          {open.length > 0 && (
+            <span className="text-muted-foreground font-normal"> · {open.length} open</span>
+          )}
+        </h3>
+      </div>
+
+      <form onSubmit={handleAdd} className="flex gap-2 mb-3">
+        <div className="flex-1">
+          <Input
+            placeholder="Add a task and press Enter…"
+            value={quickTitle}
+            onChange={(e) => setQuickTitle(e.target.value)}
+          />
+        </div>
+        <Button type="submit" size="sm" disabled={!quickTitle.trim() || create.isPending}>
+          Add
+        </Button>
+      </form>
+
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground">Loading…</p>
+      ) : open.length > 0 ? (
+        <ul className="-mx-2">
+          {open.map((t) => (
+            <DealTaskRow key={t._id} task={t} onToggle={() => toggle(t)} onDelete={() => remove.mutate(t._id)} />
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">No open tasks.</p>
+      )}
+
+      {done.length > 0 && (
+        <>
+          <button
+            type="button"
+            onClick={() => setShowDone((s) => !s)}
+            className="text-xs text-muted-foreground hover:text-foreground mt-3"
+          >
+            {showDone ? 'Hide' : 'Show'} {done.length} completed
+          </button>
+          {showDone && (
+            <ul className="-mx-2 mt-2">
+              {done.map((t) => (
+                <DealTaskRow key={t._id} task={t} onToggle={() => toggle(t)} onDelete={() => remove.mutate(t._id)} />
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
+function DealTaskRow({ task, onToggle, onDelete }) {
+  const isDone = task.status === 'completed';
+  const due = dueDateLabel(task.dueDate);
+  return (
+    <li className="group flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/40">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
+        aria-label={isDone ? 'Mark as not done' : 'Mark complete'}
+      >
+        {isDone
+          ? <CheckSquare className="w-4 h-4 text-green-600" />
+          : <Square className="w-4 h-4" />}
+      </button>
+      <div className="flex-1 min-w-0">
+        <p className={cn('text-sm truncate', isDone && 'line-through text-muted-foreground')}>
+          {task.title}
+        </p>
+        {(due || task.assignedTo) && (
+          <p className="text-xs text-muted-foreground truncate">
+            {due && <span className={due.color}>{due.label}</span>}
+            {due && task.assignedTo && <span> · </span>}
+            {task.assignedTo && <span>{task.assignedTo.name}</span>}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-opacity shrink-0"
+        title="Delete task"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+    </li>
+  );
+}
+
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export default function DealDetail() {
@@ -669,6 +811,9 @@ export default function DealDetail() {
               <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{deal.notes}</p>
             </Card>
           )}
+
+          {/* Tasks for this deal */}
+          <DealTasksSection dealId={id} contactId={contact?._id} />
 
           {/* Lost reason — surface it loudly so reps don't miss the post-mortem */}
           {deal.status === 'lost' && deal.lostReason && (

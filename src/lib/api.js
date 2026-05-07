@@ -30,10 +30,24 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // Attempt a refresh on ANY 401 from an authenticated request, not
+    // just `code: TOKEN_EXPIRED`. Signature-mismatch 401s (e.g. after a
+    // deploy that rotated JWT_SECRET, or any other JWT verify failure)
+    // also come through here — previously those would just reject and
+    // leave the user stuck on broken pages until they manually re-logged
+    // in. Auth endpoints are excluded so a wrong-password login attempt
+    // doesn't kick off a refresh-then-redirect loop on the login screen.
+    const url = originalRequest?.url || '';
+    const isAuthEndpoint =
+      url.includes('/auth/login') ||
+      url.includes('/auth/register') ||
+      url.includes('/auth/refresh');
+
     if (
       error.response?.status === 401 &&
-      error.response?.data?.code === 'TOKEN_EXPIRED' &&
-      !originalRequest._retry
+      !originalRequest._retry &&
+      !isAuthEndpoint &&
+      localStorage.getItem('accessToken')
     ) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
