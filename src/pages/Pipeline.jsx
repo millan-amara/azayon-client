@@ -707,7 +707,11 @@ export default function Pipeline() {
   );
 
   return (
-    <div className="space-y-4 h-full">
+    // Flex shell: toolbar/chips/summary stay put (shrink-0), kanban claims
+    // the remaining viewport height and scrolls internally — this is what
+    // lets sticky stage headers stay visible while you drag from a card
+    // far down in a tall column.
+    <div className="flex flex-col gap-4 h-full min-h-0">
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -943,11 +947,14 @@ export default function Pipeline() {
 
       {/* Kanban board */}
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="flex gap-4 overflow-x-auto pb-4 kanban-scroll -mx-6 px-6">
+        <div className="flex flex-1 min-h-0 gap-4 overflow-auto pb-4 kanban-scroll -mx-6 px-6">
           {filteredKanban.map(({ stage, deals, totalValue }) => (
             <div key={stage._id} className="shrink-0 w-64">
-              {/* Column header */}
-              <div className="flex items-center justify-between mb-2 px-1">
+              {/* Column header — sticky so it stays visible while you drag a
+                  card from the bottom of a tall column. bg covers cards
+                  scrolling past it; pb absorbs the gap to the droppable so
+                  there's no flash of card peeking through under the header. */}
+              <div className="sticky top-0 z-10 bg-background flex items-center justify-between px-1 pt-1 pb-2">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
                   <span className="text-xs font-semibold uppercase tracking-wide">{stage.name}</span>
