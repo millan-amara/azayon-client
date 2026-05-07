@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRole } from '@/hooks/useRole';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Modal, Input, Select, Textarea, Spinner, EmptyState, Card } from '@/components/ui';
-import { formatCurrency, getWhatsAppUrl, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, getWhatsAppUrl, cn } from '@/lib/utils';
 import api, { downloadFile } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -18,6 +18,20 @@ function DealCard({ deal, index, onWon, onLost }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
   const waUrl = deal.contact?.phone ? getWhatsAppUrl(deal.contact.phone) : null;
+
+  // "Days in current stage" — find the open stageHistory entry (no exitedAt)
+  // and diff against now. Falls back to createdAt for legacy deals that
+  // existed before stageHistory was being written.
+  const currentStageEntry = (deal.stageHistory || []).find((h) => !h.exitedAt);
+  const enteredAt = currentStageEntry?.enteredAt || deal.createdAt;
+  const daysInStage = enteredAt
+    ? Math.floor((Date.now() - new Date(enteredAt).getTime()) / 86400000)
+    : null;
+  const stageAgeColor =
+    daysInStage == null ? '' :
+    daysInStage >= 21   ? 'text-red-500' :
+    daysInStage >= 7    ? 'text-amber-600' :
+                          'text-muted-foreground';
 
   return (
     <Draggable draggableId={deal._id} index={index}>
@@ -90,11 +104,21 @@ function DealCard({ deal, index, onWon, onLost }) {
             <span className="text-xs font-semibold text-primary">
               {formatCurrency(deal.value, deal.currency)}
             </span>
-            {deal.assignedTo && (
-              <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-semibold text-primary" title={deal.assignedTo.name}>
-                {deal.assignedTo.name?.[0] || '?'}
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {daysInStage != null && daysInStage > 0 && (
+                <span
+                  className={cn('text-[10px] font-medium tabular-nums', stageAgeColor)}
+                  title={`In ${currentStageEntry?.stageName || 'this stage'} since ${formatDate(enteredAt)}`}
+                >
+                  {daysInStage}d
+                </span>
+              )}
+              {deal.assignedTo && (
+                <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-semibold text-primary" title={deal.assignedTo.name}>
+                  {deal.assignedTo.name?.[0] || '?'}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
