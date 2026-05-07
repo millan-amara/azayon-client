@@ -58,6 +58,15 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return api(originalRequest);
       } catch (refreshError) {
+        // Surfaces *why* the refresh failed so a forced logout is
+        // diagnosable from the browser console (rate limit / expired
+        // refresh cookie / network / etc) instead of just appearing random.
+        // eslint-disable-next-line no-console
+        console.error('[auth] forced logout — refresh failed', {
+          status: refreshError?.response?.status,
+          data: refreshError?.response?.data,
+          originalUrl: originalRequest?.url,
+        });
         processQueue(refreshError, null);
         localStorage.removeItem('accessToken');
         window.location.href = '/login';

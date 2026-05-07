@@ -40,19 +40,15 @@ function DealCard({ deal, index, onWon, onLost }) {
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
+          onClick={() => navigate(`/deals/${deal._id}`)}
           className={cn(
-            'bg-background border border-border rounded-lg p-3 cursor-grab active:cursor-grabbing transition-shadow',
+            'bg-background border border-border rounded-lg p-3 cursor-grab active:cursor-grabbing transition-all hover:border-primary/40 hover:shadow-sm',
             snapshot.isDragging && 'shadow-lg ring-2 ring-primary/20'
           )}
         >
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <p
-                className="text-sm font-medium truncate hover:text-primary cursor-pointer transition-colors"
-                onClick={(e) => { e.stopPropagation(); navigate(`/deals/${deal._id}`); }}
-              >
-                {deal.title}
-              </p>
+              <p className="text-sm font-medium truncate">{deal.title}</p>
               {deal.contact && (
                 <p className="text-xs text-muted-foreground mt-0.5 truncate">
                   {deal.contact.firstName} {deal.contact.lastName}
@@ -69,16 +65,19 @@ function DealCard({ deal, index, onWon, onLost }) {
               </button>
               {menuOpen && (
                 <>
-                  <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }}
+                  />
                   <div className="absolute right-0 top-6 w-36 bg-background border border-border rounded-lg shadow-lg z-20 py-1 text-sm overflow-hidden">
                     <button
-                      onClick={() => { onWon(deal._id); setMenuOpen(false); }}
+                      onClick={(e) => { e.stopPropagation(); onWon(deal._id); setMenuOpen(false); }}
                       className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted text-green-600 transition-colors"
                     >
                       <Trophy className="w-3.5 h-3.5" /> Mark won
                     </button>
                     <button
-                      onClick={() => { onLost(deal._id); setMenuOpen(false); }}
+                      onClick={(e) => { e.stopPropagation(); onLost(deal._id); setMenuOpen(false); }}
                       className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted text-red-500 transition-colors"
                     >
                       <XCircle className="w-3.5 h-3.5" /> Mark lost
@@ -89,7 +88,7 @@ function DealCard({ deal, index, onWon, onLost }) {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted text-green-600 transition-colors"
-                        onClick={() => setMenuOpen(false)}
+                        onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }}
                       >
                         <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
                       </a>
