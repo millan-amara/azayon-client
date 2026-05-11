@@ -107,7 +107,7 @@ export async function downloadFile(path, { params, filename } = {}) {
     if (match) name = decodeURIComponent(match[1]);
   }
 
-  const url = window.URL.createObjectURL(new Blob([data]));
+  const url = window.URL.createObjectURL(data);
   const a = document.createElement('a');
   a.href = url;
   a.download = name;
