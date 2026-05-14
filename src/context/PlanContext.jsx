@@ -38,11 +38,14 @@ export function PlanProvider({ children }) {
 
   const isGrowth = billing?.plan === 'growth' && billing?.status === 'active';
   const isTrialing = billing?.isOnTrial;
-  const hasFullAccess = isGrowth || isTrialing;
+  // Derive feature access from the server's actual entitlement (limits.features)
+  // rather than inferring from plan/status. That way trial, paid Growth, and
+  // past-due-in-grace all get the same unlocked UI without enumerating states.
+  const hasFullAccess = (billing?.limits?.features || []).includes('automations');
 
   const canUse = (feature) => {
     if (!billing) return true; // optimistic while loading
-    return hasFullAccess || (billing.limits?.features || []).includes(feature);
+    return (billing.limits?.features || []).includes(feature);
   };
 
   return (

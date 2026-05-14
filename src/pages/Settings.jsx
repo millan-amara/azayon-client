@@ -901,7 +901,7 @@ function BillingTab() {
                 <p className="text-sm text-muted-foreground mt-0.5">
                   {trialDaysLeft === 0
                     ? 'Trial ends today'
-                    : `${trialDaysLeft} day${trialDaysLeft !== 1 ? 's' : ''} remaining — full access to all features`}
+                    : `${trialDaysLeft} day${trialDaysLeft !== 1 ? 's' : ''} remaining — premium features unlocked, Free plan caps apply`}
                 </p>
                 {/* Trial progress bar */}
                 <div className="mt-3 w-48">
@@ -963,13 +963,20 @@ function BillingTab() {
       {/* What's included */}
       <Card className="p-5">
         <h3 className="text-sm font-semibold mb-3">
-          {isOnTrial || isActive ? 'Growth plan includes' : 'Upgrade to Growth to unlock'}
+          {isActive
+            ? 'Your Growth plan includes'
+            : isOnTrial
+              ? 'During your trial — premium features unlocked'
+              : 'Upgrade to Growth to unlock'}
         </h3>
         <div className="grid grid-cols-2 gap-2">
           {[
-            { label: '5 team members', included: true },
-            { label: 'Unlimited contacts', included: isOnTrial || isActive },
-            { label: 'Unlimited deals', included: isOnTrial || isActive },
+            // Scale items — granted only on paid Growth. During trial these
+            // stay capped at Free so the user feels the wall and converts.
+            { label: '5 team members', included: isActive },
+            { label: 'Unlimited contacts', included: isActive },
+            { label: 'Unlimited deals', included: isActive },
+            // Feature items — granted during trial AND paid Growth.
             { label: 'Full automations', included: isOnTrial || isActive },
             { label: 'AI summary & email drafting', included: isOnTrial || isActive },
             { label: 'File attachments', included: isOnTrial || isActive },

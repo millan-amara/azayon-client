@@ -30,7 +30,7 @@ export function TrialBanner() {
             ? 'Your free trial ends today — upgrade now to keep access'
             : days === 1
               ? 'Your free trial ends tomorrow'
-              : `${days} days left on your free trial — you have full access to all Growth features`}
+              : `${days} days left to try automations, AI & attachments — upgrade for unlimited contacts and teammates`}
         </p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
@@ -67,22 +67,34 @@ export function PlanStatusBanner() {
   if (billing.status !== 'past_due' && billing.status !== 'cancelled') return null;
 
   const isPastDue = billing.status === 'past_due';
+  const inGrace = isPastDue && billing.inPastDueGrace;
+  const graceDays = billing.pastDueDaysLeft;
+
+  // Past_due in grace = features still working, but a clock is ticking. Orange
+  // urgency. Past_due past grace OR cancelled = hard locked, red urgency.
+  const message = isPastDue
+    ? inGrace
+      ? graceDays <= 1
+        ? 'Your payment failed — update your card today to avoid losing access tomorrow'
+        : `Your payment failed — ${graceDays} days to update your card before features lock`
+      : 'Your payment failed and the grace window has ended — update your card to restore access'
+    : 'Your subscription has been cancelled — your data is safe but features are locked';
+
+  const bg = inGrace ? 'bg-amber-500' : 'bg-red-500';
+  const buttonHoverBg = inGrace ? 'hover:bg-amber-400' : 'hover:bg-red-400';
+  const buttonText = inGrace ? 'text-amber-600' : 'text-red-600';
 
   return (
-    <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-amber-500 text-white text-sm">
+    <div className={cn('flex items-center justify-between gap-3 px-4 py-2.5 text-white text-sm', bg)}>
       <div className="flex items-center gap-2">
         <AlertTriangle className="w-4 h-4 shrink-0" />
-        <p>
-          {isPastDue
-            ? 'Your last payment failed — update your payment method to keep access'
-            : 'Your subscription has been cancelled — your data is safe but features are locked'}
-        </p>
+        <p>{message}</p>
       </div>
       <Button
         size="sm"
         variant="outline"
         onClick={() => showUpgrade('automations')}
-        className="h-7 text-xs font-semibold border-white/40 text-amber-500 hover:bg-amber-400 hover:text-white shrink-0"
+        className={cn('h-7 text-xs font-semibold border-white/40 hover:text-white shrink-0', buttonText, buttonHoverBg)}
       >
         {isPastDue ? 'Update payment' : 'Resubscribe'}
       </Button>
