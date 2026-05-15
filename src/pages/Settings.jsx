@@ -674,7 +674,12 @@ function InstallAppCard() {
 // persists the URL via PUT /orgs/me immediately on success (matches the
 // Attachments component). The other fields are part of the parent
 // GeneralTab form and save on its "Save changes" button.
-function BrandingCard({ org, brandColor, address, footerText, onBrandColorChange, onAddressChange, onFooterTextChange }) {
+function BrandingCard({
+  org,
+  brandColor, address, footerText, billingEmail, billingPhone,
+  onBrandColorChange, onAddressChange, onFooterTextChange,
+  onBillingEmailChange, onBillingPhoneChange,
+}) {
   const { updateOrg } = useAuth();
   const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
   const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
@@ -842,6 +847,29 @@ function BrandingCard({ org, brandColor, address, footerText, onBrandColorChange
         <p className="text-xs text-muted-foreground mt-1">Shown under your business name on every PDF.</p>
       </div>
 
+      {/* Billing contact */}
+      <div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Input
+            label="Billing email"
+            type="email"
+            value={billingEmail}
+            onChange={(e) => onBillingEmailChange(e.target.value)}
+            placeholder="billing@yourcompany.com"
+          />
+          <Input
+            label="Billing phone"
+            type="tel"
+            value={billingPhone}
+            onChange={(e) => onBillingPhoneChange(e.target.value)}
+            placeholder="+254 700 000 000"
+          />
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          Shown on invoices and quotes so customers can reach your business about payment. Leave blank to use the creator's profile.
+        </p>
+      </div>
+
       {/* Footer */}
       <div>
         <label className="block text-sm font-medium mb-1.5">Document footer</label>
@@ -871,9 +899,11 @@ function GeneralTab({ org, isAdmin }) {
     bhStart: org?.settings?.businessHours?.start || '09:00',
     bhEnd: org?.settings?.businessHours?.end || '17:00',
     workDays: org?.settings?.businessHours?.workDays || [1, 2, 3, 4, 5],
-    brandColor: org?.settings?.branding?.brandColor || '#5046e4',
-    address:    org?.settings?.branding?.address || '',
-    footerText: org?.settings?.branding?.footerText || '',
+    brandColor:   org?.settings?.branding?.brandColor || '#5046e4',
+    address:      org?.settings?.branding?.address || '',
+    footerText:   org?.settings?.branding?.footerText || '',
+    billingEmail: org?.settings?.branding?.billingEmail || '',
+    billingPhone: org?.settings?.branding?.billingPhone || '',
   });
 
   // If the org's current value isn't in the list (e.g. stored timezone we don't list), keep it as an extra option
@@ -913,9 +943,11 @@ function GeneralTab({ org, isAdmin }) {
         // Logo URL/publicId are persisted immediately on upload (see BrandingCard).
         // Here we only send the form-editable branding fields.
         branding: {
-          brandColor: form.brandColor,
-          address:    form.address,
-          footerText: form.footerText,
+          brandColor:   form.brandColor,
+          address:      form.address,
+          footerText:   form.footerText,
+          billingEmail: form.billingEmail.trim(),
+          billingPhone: form.billingPhone.trim(),
         },
       },
     };
@@ -1060,9 +1092,13 @@ function GeneralTab({ org, isAdmin }) {
         brandColor={form.brandColor}
         address={form.address}
         footerText={form.footerText}
+        billingEmail={form.billingEmail}
+        billingPhone={form.billingPhone}
         onBrandColorChange={(v) => setForm((f) => ({ ...f, brandColor: v }))}
         onAddressChange={(v) => setForm((f) => ({ ...f, address: v }))}
         onFooterTextChange={(v) => setForm((f) => ({ ...f, footerText: v }))}
+        onBillingEmailChange={(v) => setForm((f) => ({ ...f, billingEmail: v }))}
+        onBillingPhoneChange={(v) => setForm((f) => ({ ...f, billingPhone: v }))}
       />
 
       <InstallAppCard />
