@@ -404,13 +404,32 @@ function ViewMode({ doc, onEdit }) {
       <Card className="p-6 space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h2 className="text-xl font-bold">{doc.fromBusinessName}</h2>
-            {doc.fromEmail && <p className="text-xs text-muted-foreground">{doc.fromEmail}</p>}
-            {doc.fromPhone && <p className="text-xs text-muted-foreground">{doc.fromPhone}</p>}
+          <div className="flex items-start gap-3">
+            {doc.fromLogoUrl && (
+              <img
+                src={doc.fromLogoUrl}
+                alt={doc.fromBusinessName}
+                className="h-12 w-auto max-w-32 object-contain"
+              />
+            )}
+            <div>
+              <h2 className="text-xl font-bold">{doc.fromBusinessName}</h2>
+              {doc.fromEmail   && <p className="text-xs text-muted-foreground">{doc.fromEmail}</p>}
+              {doc.fromPhone   && <p className="text-xs text-muted-foreground">{doc.fromPhone}</p>}
+              {doc.fromAddress && <p className="text-xs text-muted-foreground whitespace-pre-line">{doc.fromAddress}</p>}
+            </div>
           </div>
           <div className="text-right">
-            <p className={cn('text-2xl font-bold uppercase', isInvoice ? 'text-primary' : 'text-cyan-600')}>
+            <p
+              className={cn(
+                'text-2xl font-bold uppercase',
+                !(isInvoice && /^#[0-9a-fA-F]{6}$/.test(doc.fromBrandColor || ''))
+                  && (isInvoice ? 'text-primary' : 'text-cyan-600')
+              )}
+              style={isInvoice && /^#[0-9a-fA-F]{6}$/.test(doc.fromBrandColor || '')
+                ? { color: doc.fromBrandColor }
+                : undefined}
+            >
               {isInvoice ? 'Invoice' : 'Quote'}
             </p>
             <p className="text-sm font-mono">{doc.number}</p>

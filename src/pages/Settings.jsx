@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Copy, Check, Plus, Eye, EyeOff, MoreVertical, Pencil, Trash2, Clock, X, CreditCard, CheckCircle2, Zap, ArrowRight, GripVertical, ChevronDown, ChevronUp, Smartphone, Lock, Users, ShieldCheck, Shield, ShieldAlert } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Copy, Check, Plus, Eye, EyeOff, MoreVertical, Pencil, Trash2, Clock, X, CreditCard, CheckCircle2, Zap, ArrowRight, GripVertical, ChevronDown, ChevronUp, Smartphone, Lock, Users, ShieldCheck, Shield, ShieldAlert, Upload, ImagePlus } from 'lucide-react';
 import InstallAppButton from '@/components/InstallAppButton';
 import { useInstallAvailable } from '@/lib/pwa';
 import { useAuth } from '@/context/AuthContext';
@@ -668,6 +668,197 @@ function InstallAppCard() {
   );
 }
 
+// Branding card — controls the logo, brand color, business address, and
+// document footer text shown on PDF invoices/quotes and the public document
+// page. Logo upload writes to Cloudinary directly from the browser and
+// persists the URL via PUT /orgs/me immediately on success (matches the
+// Attachments component). The other fields are part of the parent
+// GeneralTab form and save on its "Save changes" button.
+function BrandingCard({ org, brandColor, address, footerText, onBrandColorChange, onAddressChange, onFooterTextChange }) {
+  const { updateOrg } = useAuth();
+  const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+  const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+  const [logoUrl,   setLogoUrl]   = useState(org?.settings?.branding?.logoUrl || '');
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef(null);
+
+  // Persist just the logo fields without touching anything else in the org.
+  // We use the same PUT /orgs/me endpoint but only send the branding subset
+  // so unrelated form state in the parent doesn't get prematurely saved.
+  const persistLogo = async (url, publicId) => {
+    const { data } = await api.put('/orgs/me', {
+      settings: { branding: { logoUrl: url || '', logoPublicId: publicId || '' } },
+    });
+    if (data?.org) updateOrg(data.org);
+  };
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      return toast.error('Please upload an image file (PNG or JPG)');
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      return toast.error('Logo must be under 2MB');
+    }
+    if (!CLOUD_NAME || !UPLOAD_PRESET) {
+      return toast.error('Image uploads not configured. Add Cloudinary vars to client .env');
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', UPLOAD_PRESET);
+      formData.append('folder', `crm/org-logos/${org?._id || 'misc'}`);
+
+      const cloudRes = await fetch(
+        `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+        { method: 'POST', body: formData },
+      );
+      if (!cloudRes.ok) throw new Error('Upload failed');
+      const cloud = await cloudRes.json();
+
+      await persistLogo(cloud.secure_url, cloud.public_id);
+      setLogoUrl(cloud.secure_url);
+      toast.success('Logo updated');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to upload logo');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeLogo = async () => {
+    if (!confirm('Remove the logo? Future invoices and quotes will be sent without it.')) return;
+    setUploading(true);
+    try {
+      await persistLogo('', '');
+      setLogoUrl('');
+      toast.success('Logo removed');
+    } catch {
+      toast.error('Failed to remove logo');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Reset to platform default — useful escape hatch when someone has picked
+  // a colour they don't like and wants the original primary back.
+  const DEFAULT_COLOR = '#5046e4';
+
+  return (
+    <Card className="p-5 space-y-5">
+      <div>
+        <h3 className="text-sm font-semibold">Branding</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Customise how your invoices, quotes, and public payment pages look. Changes apply to new documents — already-issued ones keep their original branding.
+        </p>
+      </div>
+
+      {/* Logo */}
+      <div>
+        <label className="block text-sm font-medium mb-1.5">Logo</label>
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="w-20 h-20 rounded-lg border border-border bg-muted/30 flex items-center justify-center overflow-hidden shrink-0">
+            {logoUrl ? (
+              <img src={logoUrl} alt="Logo" className="max-w-full max-h-full object-contain" />
+            ) : (
+              <ImagePlus className="w-6 h-6 text-muted-foreground" />
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => inputRef.current?.click()}
+              loading={uploading}
+            >
+              <Upload className="w-3.5 h-3.5" />
+              {logoUrl ? 'Replace logo' : 'Upload logo'}
+            </Button>
+            {logoUrl && !uploading && (
+              <Button type="button" variant="ghost" size="sm" onClick={removeLogo}>
+                <Trash2 className="w-3.5 h-3.5" /> Remove
+              </Button>
+            )}
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/png,image/jpeg"
+              className="hidden"
+              onChange={(e) => { handleFile(e.target.files?.[0]); e.target.value = ''; }}
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">PNG or JPG, square works best. Max 2MB.</p>
+      </div>
+
+      {/* Brand color */}
+      <div>
+        <label className="block text-sm font-medium mb-1.5">Brand colour</label>
+        <div className="flex items-center gap-3">
+          <input
+            type="color"
+            value={brandColor}
+            onChange={(e) => onBrandColorChange(e.target.value)}
+            className="w-12 h-9 rounded-lg border border-border cursor-pointer bg-background"
+            aria-label="Brand colour"
+          />
+          <input
+            type="text"
+            value={brandColor}
+            onChange={(e) => onBrandColorChange(e.target.value)}
+            placeholder="#5046e4"
+            className="flex h-9 w-32 rounded-lg border border-border bg-background px-3 text-sm font-mono uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            maxLength={7}
+          />
+          {brandColor.toLowerCase() !== DEFAULT_COLOR && (
+            <button
+              type="button"
+              onClick={() => onBrandColorChange(DEFAULT_COLOR)}
+              className="text-xs text-muted-foreground hover:text-foreground underline"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">Used for accents on invoice PDFs and the public payment page.</p>
+      </div>
+
+      {/* Address */}
+      <div>
+        <label className="block text-sm font-medium mb-1.5">Business address</label>
+        <textarea
+          value={address}
+          onChange={(e) => onAddressChange(e.target.value)}
+          rows={3}
+          maxLength={500}
+          placeholder="Street, building, city&#10;Postal code, country"
+          className="flex w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <p className="text-xs text-muted-foreground mt-1">Shown under your business name on every PDF.</p>
+      </div>
+
+      {/* Footer */}
+      <div>
+        <label className="block text-sm font-medium mb-1.5">Document footer</label>
+        <textarea
+          value={footerText}
+          onChange={(e) => onFooterTextChange(e.target.value)}
+          rows={2}
+          maxLength={500}
+          placeholder="e.g. Thank you for your business. Bank: KCB · 12345678901"
+          className="flex w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <p className="text-xs text-muted-foreground mt-1">Appears at the bottom of every PDF. Good place for payment instructions or thank-you messages.</p>
+      </div>
+    </Card>
+  );
+}
+
 function GeneralTab({ org, isAdmin }) {
   const { updateOrg } = useAuth();
   const { mutateAsync, isPending } = useUpdateOrg();
@@ -680,6 +871,9 @@ function GeneralTab({ org, isAdmin }) {
     bhStart: org?.settings?.businessHours?.start || '09:00',
     bhEnd: org?.settings?.businessHours?.end || '17:00',
     workDays: org?.settings?.businessHours?.workDays || [1, 2, 3, 4, 5],
+    brandColor: org?.settings?.branding?.brandColor || '#5046e4',
+    address:    org?.settings?.branding?.address || '',
+    footerText: org?.settings?.branding?.footerText || '',
   });
 
   // If the org's current value isn't in the list (e.g. stored timezone we don't list), keep it as an extra option
@@ -716,6 +910,13 @@ function GeneralTab({ org, isAdmin }) {
           end: form.bhEnd,
           workDays: form.workDays,
         },
+        // Logo URL/publicId are persisted immediately on upload (see BrandingCard).
+        // Here we only send the form-editable branding fields.
+        branding: {
+          brandColor: form.brandColor,
+          address:    form.address,
+          footerText: form.footerText,
+        },
       },
     };
 
@@ -725,25 +926,31 @@ function GeneralTab({ org, isAdmin }) {
 
   // Read-only view for non-admins
   if (!isAdmin) {
+    const logoUrl = org?.settings?.branding?.logoUrl;
     return (
       <Card className="p-5 space-y-4">
         <h3 className="text-sm font-semibold">Organisation</h3>
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <p className="text-xs text-muted-foreground">Business name</p>
-            <p className="font-medium mt-0.5">{org?.name}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Currency</p>
-            <p className="font-medium mt-0.5">{org?.settings?.currency}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Timezone</p>
-            <p className="font-medium mt-0.5">{org?.settings?.timezone}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Created</p>
-            <p className="font-medium mt-0.5">{formatDate(org?.createdAt)}</p>
+        <div className="flex items-center gap-4">
+          {logoUrl && (
+            <img src={logoUrl} alt="Logo" className="w-14 h-14 rounded-lg border border-border object-contain bg-muted/30" />
+          )}
+          <div className="grid grid-cols-2 gap-4 text-sm flex-1">
+            <div>
+              <p className="text-xs text-muted-foreground">Business name</p>
+              <p className="font-medium mt-0.5">{org?.name}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Currency</p>
+              <p className="font-medium mt-0.5">{org?.settings?.currency}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Timezone</p>
+              <p className="font-medium mt-0.5">{org?.settings?.timezone}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Created</p>
+              <p className="font-medium mt-0.5">{formatDate(org?.createdAt)}</p>
+            </div>
           </div>
         </div>
         <p className="text-xs text-muted-foreground pt-2 border-t border-border">
@@ -847,6 +1054,16 @@ function GeneralTab({ org, isAdmin }) {
           </div>
         </div>
       </Card>
+
+      <BrandingCard
+        org={org}
+        brandColor={form.brandColor}
+        address={form.address}
+        footerText={form.footerText}
+        onBrandColorChange={(v) => setForm((f) => ({ ...f, brandColor: v }))}
+        onAddressChange={(v) => setForm((f) => ({ ...f, address: v }))}
+        onFooterTextChange={(v) => setForm((f) => ({ ...f, footerText: v }))}
+      />
 
       <InstallAppCard />
 

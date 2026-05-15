@@ -112,6 +112,10 @@ export default function PublicDocument() {
 
   const isInvoice = doc.type === 'invoice';
   const isPaid    = doc.status === 'paid';
+  // Org's branded color drives the invoice accents; quotes always render
+  // in the platform's cyan so the doc-type distinction stays visible.
+  const HEX = /^#[0-9a-fA-F]{6}$/;
+  const brandColor = isInvoice && HEX.test(doc.fromBrandColor || '') ? doc.fromBrandColor : null;
 
   return (
     <div className="min-h-screen bg-muted/30 py-8 px-4">
@@ -150,16 +154,31 @@ export default function PublicDocument() {
           <div className="p-6 border-b border-border flex items-start justify-between gap-4 flex-wrap">
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center">
-                  <Building2 className="w-4 h-4 text-white" />
-                </div>
+                {doc.fromLogoUrl ? (
+                  <img
+                    src={doc.fromLogoUrl}
+                    alt={doc.fromBusinessName}
+                    className="h-10 w-auto max-w-35 object-contain"
+                  />
+                ) : (
+                  <div
+                    className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary"
+                    style={brandColor ? { backgroundColor: brandColor } : undefined}
+                  >
+                    <Building2 className="w-4 h-4 text-white" />
+                  </div>
+                )}
                 <span className="text-base font-semibold">{doc.fromBusinessName}</span>
               </div>
-              {doc.fromEmail && <p className="text-xs text-muted-foreground">{doc.fromEmail}</p>}
-              {doc.fromPhone && <p className="text-xs text-muted-foreground">{doc.fromPhone}</p>}
+              {doc.fromEmail   && <p className="text-xs text-muted-foreground">{doc.fromEmail}</p>}
+              {doc.fromPhone   && <p className="text-xs text-muted-foreground">{doc.fromPhone}</p>}
+              {doc.fromAddress && <p className="text-xs text-muted-foreground whitespace-pre-line">{doc.fromAddress}</p>}
             </div>
             <div className="text-right">
-              <p className={cn('text-xl font-bold uppercase', isInvoice ? 'text-primary' : 'text-cyan-600')}>
+              <p
+                className={cn('text-xl font-bold uppercase', !brandColor && (isInvoice ? 'text-primary' : 'text-cyan-600'))}
+                style={brandColor ? { color: brandColor } : undefined}
+              >
                 {isInvoice ? 'Invoice' : 'Quote'}
               </p>
               <p className="text-sm font-mono text-muted-foreground">{doc.number}</p>
@@ -232,7 +251,10 @@ export default function PublicDocument() {
               )}
               <div className="flex justify-between text-base font-bold pt-2 border-t border-border">
                 <span>Total</span>
-                <span className={cn('tabular-nums', isInvoice ? 'text-primary' : 'text-cyan-600')}>
+                <span
+                  className={cn('tabular-nums', !brandColor && (isInvoice ? 'text-primary' : 'text-cyan-600'))}
+                  style={brandColor ? { color: brandColor } : undefined}
+                >
                   {formatCurrency(doc.total, doc.currency)}
                 </span>
               </div>
@@ -243,6 +265,12 @@ export default function PublicDocument() {
             <div className="px-6 pb-6 pt-4 border-t border-border">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Notes</p>
               <p className="text-sm whitespace-pre-wrap">{doc.notes}</p>
+            </div>
+          )}
+
+          {doc.fromFooterText && (
+            <div className="px-6 py-3 bg-muted/40 border-t border-border">
+              <p className="text-xs text-muted-foreground whitespace-pre-wrap text-center">{doc.fromFooterText}</p>
             </div>
           )}
         </div>
