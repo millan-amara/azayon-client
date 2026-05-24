@@ -47,6 +47,18 @@ export function AuthProvider({ children }) {
     return data;
   };
 
+  // `credential` is the Google ID token (JWT) returned by the Google
+  // Identity Services button. The server verifies it and either signs the
+  // user in, links the Google identity to an existing email account, or
+  // creates a new org + admin user (mirrors /register).
+  const loginWithGoogle = async (credential) => {
+    const { data } = await api.post('/auth/google', { credential });
+    localStorage.setItem('accessToken', data.accessToken);
+    setUser(data.user);
+    setOrg(data.org);
+    return data;
+  };
+
   const logout = async () => {
     try {
       await api.post('/auth/logout');
@@ -63,7 +75,7 @@ export function AuthProvider({ children }) {
   const updateOrg = (updates) => setOrg((prev) => ({ ...prev, ...updates }));
 
   return (
-    <AuthContext.Provider value={{ user, org, loading, login, register, logout, updateUser, updateOrg, fetchMe }}>
+    <AuthContext.Provider value={{ user, org, loading, login, register, loginWithGoogle, logout, updateUser, updateOrg, fetchMe }}>
       {children}
     </AuthContext.Provider>
   );

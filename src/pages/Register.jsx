@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Input, PasswordInput } from '@/components/ui';
 import SEO from '@/components/SEO';
+import GoogleSignInButton from '@/components/GoogleSignInButton';
 import toast from 'react-hot-toast';
 import { Mail } from 'lucide-react';
 import api from '@/lib/api';
@@ -152,6 +153,16 @@ export default function Register() {
         <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
           <h1 className="text-xl font-semibold mb-1">Create your account</h1>
           <p className="text-sm text-muted-foreground mb-6">Set up your CRM in seconds</p>
+
+          <div className="flex justify-center mb-4">
+            <GoogleSignInButton text="signup_with" />
+          </div>
+
+          <div className="flex items-center gap-3 my-4">
+            <div className="flex-1 h-px bg-border" />
+            <span className="text-xs text-muted-foreground uppercase">or</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
